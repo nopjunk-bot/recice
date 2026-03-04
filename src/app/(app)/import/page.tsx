@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Trash2, Search } from "lucide-react";
+import { Upload, Trash2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 
 type Student = {
@@ -124,10 +124,20 @@ export default function ImportPage() {
       {/* Upload Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">อัปโหลดไฟล์ Excel</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            คอลัมน์: เลขประจำตัว | คำนำหน้า | ชื่อ | นามสกุล | ชั้น | ห้อง
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">อัปโหลดไฟล์ Excel</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                คอลัมน์: เลขประจำตัว | คำนำหน้า | ชื่อ | นามสกุล | ชั้น | ห้อง
+              </p>
+            </div>
+            <Button variant="outline" asChild>
+              <a href="/api/import/template" download>
+                <Download className="w-4 h-4 mr-2" />
+                ดาวน์โหลด Template
+              </a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4 items-end">

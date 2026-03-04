@@ -90,6 +90,7 @@ model WelfareDistribution {
   item              WelfareItem @relation(fields: [itemId], references: [id])
   received          Boolean  @default(true)
   notReceivedReason String?
+  pendingSize       String?
   scannedById       String
   scannedBy         User     @relation(fields: [scannedById], references: [id])
   scannedAt         DateTime @default(now())

@@ -7,8 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScanBarcode, Save, CheckCircle2, XCircle, History } from "lucide-react";
 import { toast } from "sonner";
+
+const CLOTHING_KEYWORDS = ["เสื้อ", "กางเกง"];
+const SIZES = ["SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
 
 type WelfareItem = {
   id: string;
@@ -19,6 +29,7 @@ type Distribution = {
   id: string;
   itemId: string;
   received: boolean;
+  pendingSize: string | null;
   item: WelfareItem;
 };
 
@@ -39,6 +50,7 @@ type ItemState = {
   name: string;
   received: boolean;
   reason: string;
+  pendingSize: string;
 };
 
 type ScanRecord = {
@@ -103,6 +115,7 @@ export default function ScanPage() {
           name: item.name,
           received: existing ? existing.received : true,
           reason: "",
+          pendingSize: existing?.pendingSize || "",
         };
       });
       setItemStates(states);
@@ -129,6 +142,7 @@ export default function ScanPage() {
             itemId: s.itemId,
             received: s.received,
             reason: s.reason,
+            pendingSize: s.pendingSize || null,
           })),
         }),
       });
@@ -190,7 +204,19 @@ export default function ScanPage() {
   function toggleReceived(index: number) {
     setItemStates((prev) =>
       prev.map((s, i) =>
-        i === index ? { ...s, received: !s.received } : s
+        i === index ? { ...s, received: !s.received, pendingSize: !s.received ? "" : s.pendingSize } : s
+      )
+    );
+  }
+
+  function isClothingItem(name: string) {
+    return CLOTHING_KEYWORDS.some((kw) => name.includes(kw));
+  }
+
+  function setPendingSize(index: number, size: string) {
+    setItemStates((prev) =>
+      prev.map((s, i) =>
+        i === index ? { ...s, pendingSize: size } : s
       )
     );
   }
@@ -291,30 +317,56 @@ export default function ScanPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {itemStates.map((item, index) => (
-                      <div
-                        key={item.itemId}
-                        className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-colors ${
-                          item.received
-                            ? "border-green-200 bg-green-50"
-                            : "border-red-200 bg-red-50"
-                        }`}
-                      >
-                        <Checkbox
-                          id={item.itemId}
-                          checked={item.received}
-                          onCheckedChange={() => toggleReceived(index)}
-                          className="w-6 h-6"
-                        />
-                        <Label
-                          htmlFor={item.itemId}
-                          className="flex-1 text-lg font-medium cursor-pointer"
+                      <div key={item.itemId}>
+                        <div
+                          className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-colors ${
+                            item.received
+                              ? "border-green-200 bg-green-50"
+                              : "border-red-200 bg-red-50"
+                          } ${!item.received && isClothingItem(item.name) ? "rounded-b-none" : ""}`}
                         >
-                          {item.name}
-                        </Label>
-                        {item.received ? (
-                          <CheckCircle2 className="w-6 h-6 text-green-600" />
-                        ) : (
-                          <XCircle className="w-6 h-6 text-red-600" />
+                          <Checkbox
+                            id={item.itemId}
+                            checked={item.received}
+                            onCheckedChange={() => toggleReceived(index)}
+                            className="w-6 h-6"
+                          />
+                          <Label
+                            htmlFor={item.itemId}
+                            className="flex-1 text-lg font-medium cursor-pointer"
+                          >
+                            {item.name}
+                          </Label>
+                          {item.received ? (
+                            <CheckCircle2 className="w-6 h-6 text-green-600" />
+                          ) : (
+                            <XCircle className="w-6 h-6 text-red-600" />
+                          )}
+                        </div>
+                        {/* Show size selector for clothing items when not received */}
+                        {!item.received && isClothingItem(item.name) && (
+                          <div className="border-2 border-t-0 border-red-200 bg-red-50 rounded-b-lg px-4 pb-4 pt-2">
+                            <div className="flex items-center gap-3">
+                              <Label className="text-sm font-medium whitespace-nowrap">
+                                เลือกไซส์ที่ต้องการรับภายหลัง:
+                              </Label>
+                              <Select
+                                value={item.pendingSize}
+                                onValueChange={(val) => setPendingSize(index, val)}
+                              >
+                                <SelectTrigger className="w-32 bg-white">
+                                  <SelectValue placeholder="เลือกไซส์" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SIZES.map((size) => (
+                                    <SelectItem key={size} value={size}>
+                                      {size}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         )}
                       </div>
                     ))}

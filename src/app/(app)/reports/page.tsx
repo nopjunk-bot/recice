@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Package, BarChart3 } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt } from "lucide-react";
 
 type NotReceivedItem = {
   id: string;
@@ -47,16 +47,29 @@ type LevelData = {
   pending: number;
 };
 
+type SizeStudent = {
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
+};
+
+type SizeSummary = Record<string, Record<string, { count: number; students: SizeStudent[] }>>;
+
 export default function ReportsPage() {
   const [notReceived, setNotReceived] = useState<NotReceivedItem[]>([]);
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [byLevel, setByLevel] = useState<LevelData[]>([]);
+  const [sizeSummary, setSizeSummary] = useState<SizeSummary>({});
   const [activeTab, setActiveTab] = useState("not-received");
 
   useEffect(() => {
     if (activeTab === "not-received") loadNotReceived();
     else if (activeTab === "summary") loadSummary();
     else if (activeTab === "by-level") loadByLevel();
+    else if (activeTab === "size-summary") loadSizeSummary();
   }, [activeTab]);
 
   async function loadNotReceived() {
@@ -72,6 +85,11 @@ export default function ReportsPage() {
   async function loadByLevel() {
     const res = await fetch("/api/reports?type=by-level");
     setByLevel(await res.json());
+  }
+
+  async function loadSizeSummary() {
+    const res = await fetch("/api/reports?type=size-summary");
+    setSizeSummary(await res.json());
   }
 
   return (
@@ -91,6 +109,10 @@ export default function ReportsPage() {
           <TabsTrigger value="by-level" className="gap-2">
             <BarChart3 className="w-4 h-4" />
             แบ่งตามชั้น
+          </TabsTrigger>
+          <TabsTrigger value="size-summary" className="gap-2">
+            <Shirt className="w-4 h-4" />
+            สรุปไซส์ค้างรับ
           </TabsTrigger>
         </TabsList>
 
@@ -270,6 +292,98 @@ export default function ReportsPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="size-summary">
+          <div className="space-y-6">
+            {Object.keys(sizeSummary).length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  ยังไม่มีข้อมูลไซส์ที่ค้างรับ
+                </CardContent>
+              </Card>
+            ) : (
+              Object.entries(sizeSummary).map(([itemName, sizes]) => {
+                const totalCount = Object.values(sizes).reduce((sum, s) => sum + s.count, 0);
+                return (
+                  <Card key={itemName}>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Shirt className="w-5 h-5" />
+                        {itemName} - ค้างรับทั้งหมด {totalCount} คน
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {/* Size summary cards */}
+                      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3 mb-6">
+                        {Object.entries(sizes)
+                          .sort(([a], [b]) => {
+                            const order = ["SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+                            return order.indexOf(a) - order.indexOf(b);
+                          })
+                          .map(([size, data]) => (
+                            <div
+                              key={size}
+                              className="text-center p-3 rounded-lg border-2 border-orange-200 bg-orange-50"
+                            >
+                              <p className="text-2xl font-bold text-orange-700">{data.count}</p>
+                              <p className="text-sm font-medium text-orange-600">{size}</p>
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* Student list per size */}
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ไซส์</TableHead>
+                            <TableHead>เลขประจำตัว</TableHead>
+                            <TableHead>ชื่อ-นามสกุล</TableHead>
+                            <TableHead>ชั้น/ห้อง</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Object.entries(sizes)
+                            .sort(([a], [b]) => {
+                              const order = ["SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+                              return order.indexOf(a) - order.indexOf(b);
+                            })
+                            .flatMap(([size, data]) =>
+                              data.students.map((st, i) => (
+                                <TableRow key={`${size}-${st.studentCode}`}>
+                                  {i === 0 ? (
+                                    <TableCell
+                                      rowSpan={data.students.length}
+                                      className="font-bold text-center align-top"
+                                    >
+                                      <Badge className="bg-orange-100 text-orange-700 text-base">
+                                        {size}
+                                      </Badge>
+                                    </TableCell>
+                                  ) : null}
+                                  <TableCell className="font-mono">{st.studentCode}</TableCell>
+                                  <TableCell>
+                                    {st.prefix}{st.firstName} {st.lastName}
+                                  </TableCell>
+                                  <TableCell>{st.level}/{st.room}</TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          {Object.keys(sizes).length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
+                                ไม่มีข้อมูล
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

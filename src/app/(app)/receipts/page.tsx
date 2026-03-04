@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -46,17 +46,42 @@ export default function ReceiptsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState("");
+  const [filterRoom, setFilterRoom] = useState("");
+  const [availableRooms, setAvailableRooms] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [receiptDate, setReceiptDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0]; // YYYY-MM-DD
+  });
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce search input - รอ 400ms หลังพิมพ์เสร็จค่อย query
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
+
+  // โหลดรายชื่อห้องทั้งหมดครั้งเดียวตอนเปิดหน้า (query เบาๆ ดึงแค่ชื่อห้อง)
+  useEffect(() => {
+    fetch("/api/students/rooms")
+      .then((res) => res.json())
+      .then((data: string[]) => setAvailableRooms(data));
+  }, []);
 
   useEffect(() => {
     loadStudents();
-  }, [search, filterType]);
+  }, [debouncedSearch, filterType, filterRoom]);
 
   async function loadStudents() {
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     if (filterType && filterType !== "all") params.set("receiptType", filterType);
+    if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(data);
@@ -98,7 +123,7 @@ export default function ReceiptsPage() {
       }
 
       // Generate PDF on client side
-      await generatePDF(data.receipts);
+      await generatePDF(data.receipts, receiptDate);
       toast.success(`สร้างใบเสร็จ ${data.receipts.length} ใบสำเร็จ`);
       loadStudents();
     } catch {
@@ -118,231 +143,11 @@ export default function ReceiptsPage() {
         total: number;
       };
       barcodeData: string;
-    }[]
+    }[],
+    dateStr: string
   ) {
-    const { default: jsPDF } = await import("jspdf");
-    const { default: JsBarcode } = await import("jsbarcode");
-    const { default: THBText } = await import("thai-baht-text");
-
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-
-    // A4 = 210 x 297mm, each receipt = A5 = 105 x ~148mm (2 per page side by side)
-    const receiptWidth = 105;
-    const pageHeight = 297;
-
-    for (let i = 0; i < receipts.length; i++) {
-      const receipt = receipts[i];
-      // Two copies side by side (left and right)
-      for (let side = 0; side < 2; side++) {
-        const offsetX = side * receiptWidth;
-
-        if (i > 0 && side === 0) {
-          doc.addPage();
-        }
-
-        // Barcode at top-left corner
-        const canvas = document.createElement("canvas");
-        JsBarcode(canvas, receipt.barcodeData, {
-          format: "CODE128",
-          width: 1.5,
-          height: 30,
-          displayValue: true,
-          fontSize: 8,
-          margin: 2,
-        });
-        const barcodeImg = canvas.toDataURL("image/png");
-        doc.addImage(barcodeImg, "PNG", offsetX + 3, 5, 35, 15);
-
-        // Receipt number
-        doc.setFontSize(9);
-        doc.text(
-          `เลขที่ ${receipt.receiptNumber}`,
-          offsetX + receiptWidth - 10,
-          10,
-          { align: "right" }
-        );
-        doc.text("(สำหรับนักเรียน)", offsetX + receiptWidth - 10, 15, {
-          align: "right",
-        });
-
-        // Title
-        let y = 30;
-        doc.setFontSize(13);
-        doc.text(receipt.config.title, offsetX + receiptWidth / 2, y, {
-          align: "center",
-        });
-
-        y += 6;
-        doc.setFontSize(9);
-        doc.text(
-          "498 ตำบลเนินพระ อำเภอเมืองระยอง จังหวัดระยอง",
-          offsetX + receiptWidth / 2,
-          y,
-          { align: "center" }
-        );
-
-        y += 5;
-        doc.text(
-          "วันที่       เดือน เมษายน พ.ศ. 2569",
-          offsetX + receiptWidth / 2,
-          y,
-          { align: "center" }
-        );
-
-        y += 6;
-        doc.setFontSize(9);
-        const fullName = `${receipt.student.prefix}${receipt.student.firstName} ${receipt.student.lastName}`;
-        doc.text(`ได้รับเงินจาก ${fullName}`, offsetX + 5, y);
-        doc.text(
-          `ชั้น ${receipt.student.level}/${receipt.student.room}`,
-          offsetX + receiptWidth - 5,
-          y,
-          { align: "right" }
-        );
-
-        // Table header
-        y += 6;
-        const tableX = offsetX + 5;
-        const tableW = receiptWidth - 10;
-        const colWidths = [8, tableW - 28, 14, 6];
-
-        doc.setFontSize(8);
-        doc.setDrawColor(0);
-        doc.setLineWidth(0.3);
-
-        // Header row
-        doc.rect(tableX, y, colWidths[0], 8);
-        doc.rect(tableX + colWidths[0], y, colWidths[1], 8);
-        doc.rect(tableX + colWidths[0] + colWidths[1], y, colWidths[2], 4);
-        doc.rect(tableX + colWidths[0] + colWidths[1], y + 4, colWidths[2] / 2, 4);
-        doc.rect(
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 2,
-          y + 4,
-          colWidths[2] / 2,
-          4
-        );
-
-        doc.text("ที่", tableX + colWidths[0] / 2, y + 5, { align: "center" });
-        doc.text("รายการ", tableX + colWidths[0] + colWidths[1] / 2, y + 5, {
-          align: "center",
-        });
-        doc.text(
-          "จำนวนเงิน",
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 2,
-          y + 3,
-          { align: "center" }
-        );
-        doc.setFontSize(7);
-        doc.text(
-          "บาท",
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 4,
-          y + 7,
-          { align: "center" }
-        );
-        doc.text(
-          "สต.",
-          tableX + colWidths[0] + colWidths[1] + (colWidths[2] * 3) / 4,
-          y + 7,
-          { align: "center" }
-        );
-
-        y += 8;
-        doc.setFontSize(8);
-
-        // Data rows
-        for (let j = 0; j < receipt.config.items.length; j++) {
-          const item = receipt.config.items[j];
-          const rowH = 6;
-
-          doc.rect(tableX, y, colWidths[0], rowH);
-          doc.rect(tableX + colWidths[0], y, colWidths[1], rowH);
-          doc.rect(
-            tableX + colWidths[0] + colWidths[1],
-            y,
-            colWidths[2] / 2,
-            rowH
-          );
-          doc.rect(
-            tableX + colWidths[0] + colWidths[1] + colWidths[2] / 2,
-            y,
-            colWidths[2] / 2,
-            rowH
-          );
-
-          doc.text(String(j + 1), tableX + colWidths[0] / 2, y + 4, {
-            align: "center",
-          });
-          doc.text(item.name, tableX + colWidths[0] + 2, y + 4);
-          doc.text(
-            item.amount.toLocaleString(),
-            tableX + colWidths[0] + colWidths[1] + colWidths[2] / 4,
-            y + 4,
-            { align: "center" }
-          );
-          doc.text(
-            "-",
-            tableX + colWidths[0] + colWidths[1] + (colWidths[2] * 3) / 4,
-            y + 4,
-            { align: "center" }
-          );
-
-          y += rowH;
-        }
-
-        // Total row
-        const totalRowH = 6;
-        doc.rect(tableX, y, colWidths[0] + colWidths[1], totalRowH);
-        doc.rect(
-          tableX + colWidths[0] + colWidths[1],
-          y,
-          colWidths[2] / 2,
-          totalRowH
-        );
-        doc.rect(
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 2,
-          y,
-          colWidths[2] / 2,
-          totalRowH
-        );
-
-        doc.setFontSize(8);
-        doc.text(
-          "รวมเงินทั้งสิ้น (บาท)",
-          tableX + (colWidths[0] + colWidths[1]) / 2,
-          y + 4,
-          { align: "center" }
-        );
-        doc.text(
-          receipt.config.total.toLocaleString(),
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] / 4,
-          y + 4,
-          { align: "center" }
-        );
-        doc.text(
-          "-",
-          tableX + colWidths[0] + colWidths[1] + (colWidths[2] * 3) / 4,
-          y + 4,
-          { align: "center" }
-        );
-
-        y += totalRowH + 4;
-
-        // Thai baht text
-        doc.setFontSize(8);
-        const bahtText = THBText(receipt.config.total);
-        doc.text(`ตัวอักษร (${bahtText})`, offsetX + 5, y);
-
-        y += 10;
-        doc.text(
-          "ลงชื่อ..........................................................ผู้รับเงิน",
-          offsetX + receiptWidth / 2,
-          y,
-          { align: "center" }
-        );
-      }
-    }
-
-    doc.save("ใบเสร็จรับเงินชั่วคราว.pdf");
+    const { generateReceiptPDF } = await import("@/lib/pdf-generator");
+    generateReceiptPDF(receipts, dateStr);
   }
 
   return (
@@ -360,6 +165,19 @@ export default function ReceiptsPage() {
         </Button>
       </div>
 
+      <div className="flex items-center gap-3">
+        <label htmlFor="receiptDate" className="text-sm font-medium whitespace-nowrap">
+          วันที่ในใบเสร็จ
+        </label>
+        <Input
+          id="receiptDate"
+          type="date"
+          value={receiptDate}
+          onChange={(e) => setReceiptDate(e.target.value)}
+          className="w-48"
+        />
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex flex-col md:flex-row gap-3">
@@ -368,12 +186,12 @@ export default function ReceiptsPage() {
               <Input
                 placeholder="ค้นหาชื่อ หรือ เลขประจำตัว..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9"
               />
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full md:w-56">
+              <SelectTrigger className="w-full md:w-40">
                 <SelectValue placeholder="ทุกประเภท" />
               </SelectTrigger>
               <SelectContent>
@@ -381,6 +199,19 @@ export default function ReceiptsPage() {
                 <SelectItem value="M1">ม.1</SelectItem>
                 <SelectItem value="M4_GENERAL">ม.4 ทั่วไป</SelectItem>
                 <SelectItem value="M4_LANG">ม.4 อังกฤษ จีน ญี่ปุ่น</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterRoom} onValueChange={setFilterRoom}>
+              <SelectTrigger className="w-full md:w-40">
+                <SelectValue placeholder="ทุกห้อง" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกห้อง</SelectItem>
+                {availableRooms.map((room) => (
+                  <SelectItem key={room} value={room}>
+                    ห้อง {room}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

@@ -1,0 +1,277 @@
+import jsPDF from "jspdf";
+import JsBarcode from "jsbarcode";
+import THBText from "thai-baht-text";
+import { THSarabunNew } from "./thsarabun-font";
+import { logo1Base64, logo2Base64 } from "./logos";
+
+type ReceiptData = {
+  student: {
+    studentCode: string;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    level: string;
+    room: string;
+    receiptType: string;
+  };
+  receiptNumber: string;
+  config: {
+    title: string;
+    items: { name: string; amount: number }[];
+    total: number;
+  };
+  barcodeData: string;
+};
+
+// Register TH Sarabun New font into jsPDF
+function registerFont(doc: jsPDF) {
+  doc.addFileToVFS("THSarabunNew.ttf", THSarabunNew);
+  doc.addFont("THSarabunNew.ttf", "THSarabunNew", "normal");
+  doc.setFont("THSarabunNew");
+}
+
+// Format date string (YYYY-MM-DD) to Thai date text
+function formatThaiDate(dateStr: string): string {
+  const thaiMonths = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+  ];
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const thaiYear = year + 543;
+  const dayNum = day;
+  const monthName = thaiMonths[month - 1];
+  return `วันที่  ${dayNum}  เดือน  ${monthName}  พ.ศ. ${thaiYear}`;
+}
+
+// Draw a single receipt in A5 half (A4 Landscape = 297x210, each half = 148.5x210)
+function drawReceipt(doc: jsPDF, receipt: ReceiptData, offsetX: number, dateText: string) {
+  const W = 148.5; // half width
+  const cx = offsetX + W / 2;
+  const margin = 12;
+
+  doc.setFont("THSarabunNew", "normal");
+  doc.setTextColor(0, 0, 0);
+
+  // ========== Barcode (top-left corner) ==========
+  const canvas = document.createElement("canvas");
+  JsBarcode(canvas, receipt.barcodeData, {
+    format: "CODE128",
+    width: 1.5,
+    height: 35,
+    displayValue: true,
+    fontSize: 10,
+    margin: 2,
+    font: "monospace",
+  });
+  const barcodeImg = canvas.toDataURL("image/png");
+  doc.addImage(barcodeImg, "PNG", offsetX + 5, 5, 42, 17);
+
+  // ========== Receipt Number (top-right) ==========
+  doc.setFontSize(16);
+  const numText = `เลขที่ ${receipt.receiptNumber}`;
+  doc.text(numText, offsetX + W - margin, 13, { align: "right" });
+  // Underline the receipt number
+  const numWidth = doc.getTextWidth(receipt.receiptNumber);
+  const numEndX = offsetX + W - margin;
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.3);
+  doc.line(numEndX - numWidth - 1, 14, numEndX, 14);
+
+  // "(สำหรับนักเรียน)"
+  doc.setFontSize(14);
+  doc.text("(สำหรับนักเรียน)", offsetX + W - margin, 20, {
+    align: "right",
+  });
+
+  // ========== Logos (centered, between barcode and title) ==========
+  const logoSize = 14; // mm
+  const logoGap = 3;
+  const logoTotalW = logoSize * 2 + logoGap;
+  const logoStartX = cx - logoTotalW / 2;
+  const logoY = 20;
+  doc.addImage(logo1Base64, "PNG", logoStartX, logoY, logoSize, logoSize);
+  doc.addImage(logo2Base64, "PNG", logoStartX + logoSize + logoGap, logoY, logoSize, logoSize);
+
+  // ========== Title (bold, centered) ==========
+  let y = 37;
+  doc.setFontSize(18);
+  doc.text(receipt.config.title, cx, y, { align: "center" });
+
+  // ========== Address ==========
+  y += 8;
+  doc.setFontSize(16);
+  doc.text(
+    "498 ตำบลเนินพระ  อำเภอเมืองระยอง  จังหวัดระยอง",
+    cx,
+    y,
+    { align: "center" }
+  );
+
+  // ========== Date ==========
+  y += 7;
+  doc.text(dateText, cx, y, {
+    align: "center",
+  });
+
+  // ========== Name line ==========
+  y += 9;
+  const fullName = `${receipt.student.prefix}${receipt.student.firstName} ${receipt.student.lastName}`;
+  const classText = `ชั้น ${receipt.student.level}/${receipt.student.room}`;
+
+  doc.setFontSize(16);
+  const label = "ได้รับเงินจาก";
+  doc.text(label, offsetX + margin, y);
+  const afterLabel = offsetX + margin + doc.getTextWidth(label);
+
+  // Print student name
+  const nameX = afterLabel + 1;
+  doc.text(fullName, nameX, y);
+
+  // Print class on the right
+  const classX = offsetX + W - margin - doc.getTextWidth(classText);
+  doc.text(classText, classX, y);
+
+  // Draw dotted line between name and class
+  doc.setLineWidth(0.15);
+  const dotsStart = nameX + doc.getTextWidth(fullName) + 1;
+  const dotsEnd = classX - 2;
+  for (let dx = dotsStart; dx < dotsEnd; dx += 1.8) {
+    doc.circle(dx, y + 0.5, 0.18, "F");
+  }
+
+  // ========== Table ==========
+  y += 6;
+  const tblX = offsetX + margin;
+  const tblW = W - margin * 2;
+
+  // Column widths: ที่ | รายการ | บาท | สต.
+  const col1 = 10;  // "ที่"
+  const col4 = 10;  // "สต."
+  const col3 = 20;  // "บาท"
+  const col2 = tblW - col1 - col3 - col4; // "รายการ"
+
+  const headerH = 12;
+  const rowH = 8;
+
+  doc.setFontSize(15);
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.3);
+
+  // --- Header: "ที่" cell ---
+  doc.rect(tblX, y, col1, headerH);
+  doc.text("ที่", tblX + col1 / 2, y + 7.5, { align: "center" });
+
+  // --- Header: "รายการ" cell ---
+  doc.rect(tblX + col1, y, col2, headerH);
+  doc.text("รายการ", tblX + col1 + col2 / 2, y + 7.5, { align: "center" });
+
+  // --- Header: "จำนวนเงิน" top half ---
+  const amtX = tblX + col1 + col2;
+  doc.rect(amtX, y, col3 + col4, 6);
+  doc.setFontSize(14);
+  doc.text("จำนวนเงิน", amtX + (col3 + col4) / 2, y + 4.5, {
+    align: "center",
+  });
+
+  // --- Header: "บาท" | "สต." bottom half ---
+  doc.rect(amtX, y + 6, col3, 6);
+  doc.rect(amtX + col3, y + 6, col4, 6);
+  doc.text("บาท", amtX + col3 / 2, y + 10.5, { align: "center" });
+  doc.text("สต.", amtX + col3 + col4 / 2, y + 10.5, { align: "center" });
+
+  y += headerH;
+  doc.setFontSize(15);
+
+  // --- Data rows (different items per receipt type) ---
+  for (let j = 0; j < receipt.config.items.length; j++) {
+    const item = receipt.config.items[j];
+
+    doc.rect(tblX, y, col1, rowH);
+    doc.rect(tblX + col1, y, col2, rowH);
+    doc.rect(amtX, y, col3, rowH);
+    doc.rect(amtX + col3, y, col4, rowH);
+
+    doc.text(String(j + 1), tblX + col1 / 2, y + 5.5, { align: "center" });
+    doc.text(item.name, tblX + col1 + 3, y + 5.5);
+    doc.text(item.amount.toLocaleString(), amtX + col3 - 3, y + 5.5, {
+      align: "right",
+    });
+    doc.text("-", amtX + col3 + col4 / 2, y + 5.5, { align: "center" });
+
+    y += rowH;
+  }
+
+  // --- Total row ---
+  const totalRowH = 8;
+  doc.rect(tblX, y, col1 + col2, totalRowH);
+  doc.rect(amtX, y, col3, totalRowH);
+  doc.rect(amtX + col3, y, col4, totalRowH);
+
+  doc.setFontSize(15);
+  doc.text("รวมเงินทั้งสิ้น (บาท)", tblX + (col1 + col2) / 2, y + 5.5, {
+    align: "center",
+  });
+  doc.text(receipt.config.total.toLocaleString(), amtX + col3 - 3, y + 5.5, {
+    align: "right",
+  });
+  doc.text("-", amtX + col3 + col4 / 2, y + 5.5, { align: "center" });
+
+  y += totalRowH + 4;
+
+  // ========== Baht text ==========
+  doc.setFontSize(15);
+  const bahtText = THBText(receipt.config.total);
+  doc.text(`ตัวอักษร (${bahtText})`, offsetX + margin, y);
+
+  // ========== Signature ==========
+  y += 15;
+  doc.setFontSize(15);
+  doc.text(
+    "ลงชื่อ..........................................................ผู้รับเงิน",
+    cx,
+    y,
+    { align: "center" }
+  );
+}
+
+export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
+  // A4 Landscape: 297 x 210mm
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+  });
+
+  registerFont(doc);
+
+  // Each A4 landscape page fits 2 receipts (left A5 + right A5)
+  // Each A5 half = different student
+  const halfWidth = 148.5;
+  let slot = 0; // 0 = left half, 1 = right half
+
+  for (let i = 0; i < receipts.length; i++) {
+    // Need a new page when starting a new left half (except the first page)
+    if (slot === 0 && i > 0) {
+      doc.addPage();
+    }
+
+    const offsetX = slot * halfWidth;
+    const dateText = formatThaiDate(dateStr);
+    drawReceipt(doc, receipts[i], offsetX, dateText);
+
+    // Draw a faint vertical divider after left half
+    if (slot === 0) {
+      doc.setDrawColor(180);
+      doc.setLineWidth(0.15);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.line(halfWidth, 3, halfWidth, 207);
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(0);
+    }
+
+    // Toggle slot: 0 -> 1 -> 0 -> 1 ...
+    slot = 1 - slot;
+  }
+
+  doc.save("ใบเสร็จรับเงินชั่วคราว.pdf");
+}

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // items: [{ itemId: string, received: boolean, reason?: string }]
+    // items: [{ itemId: string, received: boolean, reason?: string, pendingSize?: string }]
     for (const item of items) {
       await prisma.welfareDistribution.upsert({
         where: {
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
         update: {
           received: item.received,
           notReceivedReason: item.reason || null,
+          pendingSize: item.received ? null : (item.pendingSize || null),
           scannedById: user.id,
           scannedAt: new Date(),
         },
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
           itemId: item.itemId,
           received: item.received,
           notReceivedReason: item.reason || null,
+          pendingSize: item.received ? null : (item.pendingSize || null),
           scannedById: user.id,
         },
       });

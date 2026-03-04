@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") || "";
   const receiptType = searchParams.get("receiptType") || "";
   const level = searchParams.get("level") || "";
+  const room = searchParams.get("room") || "";
+  const includeDistributions = searchParams.get("includeDistributions") === "true";
 
   const where: Record<string, unknown> = {};
 
@@ -31,12 +33,16 @@ export async function GET(req: NextRequest) {
     where.level = level;
   }
 
+  if (room) {
+    where.room = room;
+  }
+
   const students = await prisma.student.findMany({
     where,
     orderBy: { studentCode: "asc" },
     include: {
       receipts: { select: { id: true } },
-      distributions: { include: { item: true } },
+      ...(includeDistributions && { distributions: { include: { item: true } } }),
     },
   });
 

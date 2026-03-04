@@ -80,5 +80,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result);
   }
 
+  if (type === "size-summary") {
+    // Summary of pending sizes for clothing items (เสื้อ/กางเกง) that were not received
+    const distributions = await prisma.welfareDistribution.findMany({
+      where: {
+        received: false,
+        pendingSize: { not: null },
+      },
+      include: {
+        item: true,
+        student: true,
+      },
+      orderBy: [
+        { item: { name: "asc" } },
+        { pendingSize: "asc" },
+      ],
+    });
+
+    // Group by item name -> size -> count + student list
+    const grouped: Record<string, Record<string, { count: number; students: { studentCode: string; prefix: string; firstName: string; lastName: string; level: string; room: string }[] }>> = {};
+
+    for (const d of distributions) {
+      const itemName = d.item.name;
+      const size = d.pendingSize!;
+
+      if (!grouped[itemName]) grouped[itemName] = {};
+      if (!grouped[itemName][size]) grouped[itemName][size] = { count: 0, students: [] };
+
+      grouped[itemName][size].count++;
+      grouped[itemName][size].students.push({
+        studentCode: d.student.studentCode,
+        prefix: d.student.prefix,
+        firstName: d.student.firstName,
+        lastName: d.student.lastName,
+        level: d.student.level,
+        room: d.student.room,
+      });
+    }
+
+    return NextResponse.json(grouped);
+  }
+
   return NextResponse.json({ error: "Invalid report type" }, { status: 400 });
 }
