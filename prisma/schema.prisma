@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  DATA_ENTRY
+  WELFARE_STAFF
+}
+
+enum ReceiptType {
+  M1
+  M4_GENERAL
+  M4_LANG
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(DATA_ENTRY)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  importBatches ImportBatch[]
+  receipts      Receipt[]
+  distributions WelfareDistribution[]
+}
+
+model Student {
+  id            String      @id @default(cuid())
+  studentCode   String      @unique
+  prefix        String
+  firstName     String
+  lastName      String
+  level         String
+  room          String
+  receiptType   ReceiptType
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  receipts      Receipt[]
+  distributions WelfareDistribution[]
+}
+
+model ImportBatch {
+  id            String   @id @default(cuid())
+  fileName      String
+  importedById  String
+  importedBy    User     @relation(fields: [importedById], references: [id])
+  importedAt    DateTime @default(now())
+  totalStudents Int
+
+  students Student[]
+}
+
+model Receipt {
+  id            String      @id @default(cuid())
+  receiptNumber String      @unique
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id])
+  receiptType   ReceiptType
+  totalAmount   Float
+  barcodeData   String
+  generatedAt   DateTime    @default(now())
+  generatedById String
+  generatedBy   User        @relation(fields: [generatedById], references: [id])
+}
+
+model WelfareItem {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  distributions WelfareDistribution[]
+}
+
+model WelfareDistribution {
+  id                String   @id @default(cuid())
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id])
+  itemId            String
+  item              WelfareItem @relation(fields: [itemId], references: [id])
+  received          Boolean  @default(true)
+  notReceivedReason String?
+  scannedById       String
+  scannedBy         User     @relation(fields: [scannedById], references: [id])
+  scannedAt         DateTime @default(now())
+
+  @@unique([studentId, itemId])
+}
