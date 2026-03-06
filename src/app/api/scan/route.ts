@@ -67,31 +67,34 @@ export async function POST(req: NextRequest) {
     }
 
     // items: [{ itemId: string, received: boolean, reason?: string, pendingSize?: string }]
-    for (const item of items) {
-      await prisma.welfareDistribution.upsert({
-        where: {
-          studentId_itemId: {
+    // ใช้ $transaction รวม upserts ทั้งหมดเป็น batch เดียว
+    await prisma.$transaction(
+      items.map((item: { itemId: string; received: boolean; reason?: string; pendingSize?: string }) =>
+        prisma.welfareDistribution.upsert({
+          where: {
+            studentId_itemId: {
+              studentId,
+              itemId: item.itemId,
+            },
+          },
+          update: {
+            received: item.received,
+            notReceivedReason: item.reason || null,
+            pendingSize: item.received ? null : (item.pendingSize || null),
+            scannedById: user.id,
+            scannedAt: new Date(),
+          },
+          create: {
             studentId,
             itemId: item.itemId,
+            received: item.received,
+            notReceivedReason: item.reason || null,
+            pendingSize: item.received ? null : (item.pendingSize || null),
+            scannedById: user.id,
           },
-        },
-        update: {
-          received: item.received,
-          notReceivedReason: item.reason || null,
-          pendingSize: item.received ? null : (item.pendingSize || null),
-          scannedById: user.id,
-          scannedAt: new Date(),
-        },
-        create: {
-          studentId,
-          itemId: item.itemId,
-          received: item.received,
-          notReceivedReason: item.reason || null,
-          pendingSize: item.received ? null : (item.pendingSize || null),
-          scannedById: user.id,
-        },
-      });
-    }
+        })
+      )
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

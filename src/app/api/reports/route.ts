@@ -15,9 +15,22 @@ export async function GET(req: NextRequest) {
     // Students who didn't receive items
     const distributions = await prisma.welfareDistribution.findMany({
       where: { received: false },
-      include: {
-        student: true,
-        item: true,
+      select: {
+        id: true,
+        received: true,
+        notReceivedReason: true,
+        scannedAt: true,
+        student: {
+          select: {
+            studentCode: true,
+            prefix: true,
+            firstName: true,
+            lastName: true,
+            level: true,
+            room: true,
+          },
+        },
+        item: { select: { name: true } },
       },
       orderBy: { scannedAt: "desc" },
     });
@@ -26,56 +39,70 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === "summary") {
-    // Summary of distributed items
-    const items = await prisma.welfareItem.findMany({
-      where: { isActive: true },
-    });
+    // Summary of distributed items — ใช้ groupBy แทน loop query ทีละ item
+    const [items, totalStudents, distributionCounts] = await Promise.all([
+      prisma.welfareItem.findMany({ where: { isActive: true } }),
+      prisma.student.count(),
+      prisma.welfareDistribution.groupBy({
+        by: ["itemId", "received"],
+        _count: { id: true },
+      }),
+    ]);
 
-    const summary = [];
-    for (const item of items) {
-      const received = await prisma.welfareDistribution.count({
-        where: { itemId: item.id, received: true },
-      });
-      const notReceived = await prisma.welfareDistribution.count({
-        where: { itemId: item.id, received: false },
-      });
-      const totalStudents = await prisma.student.count();
-
-      summary.push({
-        item: item.name,
-        received,
-        notReceived,
-        notScanned: totalStudents - received - notReceived,
-        total: totalStudents,
-      });
+    // สร้าง map: itemId -> { received, notReceived }
+    const countMap = new Map<string, { received: number; notReceived: number }>();
+    for (const row of distributionCounts) {
+      const existing = countMap.get(row.itemId) || { received: 0, notReceived: 0 };
+      if (row.received) {
+        existing.received = row._count.id;
+      } else {
+        existing.notReceived = row._count.id;
+      }
+      countMap.set(row.itemId, existing);
     }
+
+    const summary = items.map((item) => {
+      const counts = countMap.get(item.id) || { received: 0, notReceived: 0 };
+      return {
+        item: item.name,
+        received: counts.received,
+        notReceived: counts.notReceived,
+        notScanned: totalStudents - counts.received - counts.notReceived,
+        total: totalStudents,
+      };
+    });
 
     return NextResponse.json(summary);
   }
 
   if (type === "by-level") {
-    // Distribution by level
+    // Distribution by level — ใช้ parallel queries แทน loop
     const levels = ["ม.1", "ม.4"];
-    const result = [];
 
-    for (const level of levels) {
-      const totalStudents = await prisma.student.count({
-        where: { level },
-      });
-      const scannedStudents = await prisma.student.count({
+    const [totalCounts, scannedCounts] = await Promise.all([
+      prisma.student.groupBy({
+        by: ["level"],
+        where: { level: { in: levels } },
+        _count: { id: true },
+      }),
+      prisma.student.groupBy({
+        by: ["level"],
         where: {
-          level,
+          level: { in: levels },
           distributions: { some: {} },
         },
-      });
+        _count: { id: true },
+      }),
+    ]);
 
-      result.push({
-        level,
-        total: totalStudents,
-        scanned: scannedStudents,
-        pending: totalStudents - scannedStudents,
-      });
-    }
+    const totalMap = new Map(totalCounts.map((r) => [r.level, r._count.id]));
+    const scannedMap = new Map(scannedCounts.map((r) => [r.level, r._count.id]));
+
+    const result = levels.map((level) => {
+      const total = totalMap.get(level) || 0;
+      const scanned = scannedMap.get(level) || 0;
+      return { level, total, scanned, pending: total - scanned };
+    });
 
     return NextResponse.json(result);
   }
@@ -87,9 +114,19 @@ export async function GET(req: NextRequest) {
         received: false,
         pendingSize: { not: null },
       },
-      include: {
-        item: true,
-        student: true,
+      select: {
+        pendingSize: true,
+        item: { select: { name: true } },
+        student: {
+          select: {
+            studentCode: true,
+            prefix: true,
+            firstName: true,
+            lastName: true,
+            level: true,
+            room: true,
+          },
+        },
       },
       orderBy: [
         { item: { name: "asc" } },

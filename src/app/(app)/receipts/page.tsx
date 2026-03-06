@@ -33,7 +33,7 @@ type Student = {
   level: string;
   room: string;
   receiptType: string;
-  receipts: { id: string }[];
+  _count: { receipts: number };
 };
 
 const receiptTypeLabels: Record<string, string> = {
@@ -66,13 +66,6 @@ export default function ReceiptsPage() {
     }, 400);
   }, []);
 
-  // โหลดรายชื่อห้องทั้งหมดครั้งเดียวตอนเปิดหน้า (query เบาๆ ดึงแค่ชื่อห้อง)
-  useEffect(() => {
-    fetch("/api/students/rooms")
-      .then((res) => res.json())
-      .then((data: string[]) => setAvailableRooms(data));
-  }, []);
-
   useEffect(() => {
     loadStudents();
   }, [debouncedSearch, filterType, filterRoom]);
@@ -84,7 +77,8 @@ export default function ReceiptsPage() {
     if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
-    setStudents(data);
+    setStudents(data.students);
+    if (data.rooms) setAvailableRooms(data.rooms);
   }
 
   function toggleAll() {
@@ -258,7 +252,7 @@ export default function ReceiptsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {s.receipts.length > 0 ? (
+                    {s._count.receipts > 0 ? (
                       <Badge className="bg-green-100 text-green-700">
                         <FileText className="w-3 h-3 mr-1" />
                         พิมพ์แล้ว

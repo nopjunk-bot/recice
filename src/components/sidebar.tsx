@@ -11,6 +11,7 @@ import {
   BarChart3,
   Users,
   LogOut,
+  UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/scan", label: "สแกน Barcode", icon: ScanBarcode },
   { href: "/reports", label: "รายงาน", icon: BarChart3 },
   { href: "/staff", label: "จัดการพนักงาน", icon: Users },
+  { href: "/manage-students", label: "ลบข้อมูลนักเรียน", icon: UserX },
 ];
 
 export default function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {

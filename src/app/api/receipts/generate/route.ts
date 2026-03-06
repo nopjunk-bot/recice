@@ -33,13 +33,18 @@ export async function POST(req: NextRequest) {
       ? parseInt(lastReceipt.receiptNumber.split("/")[0]) + 1
       : 1;
 
+    // ดึง receipts ที่มีอยู่แล้วทั้งหมดใน query เดียว แทนการ query ทีละคน
+    const existingReceipts = await prisma.receipt.findMany({
+      where: { studentId: { in: studentIds } },
+    });
+    const receiptMap = new Map(
+      existingReceipts.map((r) => [r.studentId, r])
+    );
+
     const receiptsData = [];
 
     for (const student of students) {
-      // Check if receipt already exists
-      const existing = await prisma.receipt.findFirst({
-        where: { studentId: student.id },
-      });
+      const existing = receiptMap.get(student.id);
 
       if (existing) {
         receiptsData.push({

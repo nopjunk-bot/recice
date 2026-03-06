@@ -64,32 +64,39 @@ export default function ReportsPage() {
   const [byLevel, setByLevel] = useState<LevelData[]>([]);
   const [sizeSummary, setSizeSummary] = useState<SizeSummary>({});
   const [activeTab, setActiveTab] = useState("not-received");
+  const [loaded, setLoaded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    if (loaded[activeTab]) return; // ข้อมูลโหลดแล้ว ไม่ต้อง fetch ซ้ำ
+
     if (activeTab === "not-received") loadNotReceived();
     else if (activeTab === "summary") loadSummary();
     else if (activeTab === "by-level") loadByLevel();
     else if (activeTab === "size-summary") loadSizeSummary();
-  }, [activeTab]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadNotReceived() {
     const res = await fetch("/api/reports?type=not-received");
     setNotReceived(await res.json());
+    setLoaded((prev) => ({ ...prev, "not-received": true }));
   }
 
   async function loadSummary() {
     const res = await fetch("/api/reports?type=summary");
     setSummary(await res.json());
+    setLoaded((prev) => ({ ...prev, "summary": true }));
   }
 
   async function loadByLevel() {
     const res = await fetch("/api/reports?type=by-level");
     setByLevel(await res.json());
+    setLoaded((prev) => ({ ...prev, "by-level": true }));
   }
 
   async function loadSizeSummary() {
     const res = await fetch("/api/reports?type=size-summary");
     setSizeSummary(await res.json());
+    setLoaded((prev) => ({ ...prev, "size-summary": true }));
   }
 
   return (

@@ -37,16 +37,28 @@ export async function GET(req: NextRequest) {
     where.room = room;
   }
 
-  const students = await prisma.student.findMany({
-    where,
-    orderBy: { studentCode: "asc" },
-    include: {
-      receipts: { select: { id: true } },
-      ...(includeDistributions && { distributions: { include: { item: true } } }),
-    },
-  });
+  const [students, totalCount, roomsData] = await Promise.all([
+    prisma.student.findMany({
+      where,
+      orderBy: { studentCode: "asc" },
+      include: {
+        _count: { select: { receipts: true } },
+        ...(includeDistributions && { distributions: { include: { item: true } } }),
+      },
+    }),
+    prisma.student.count(),
+    prisma.student.findMany({
+      select: { room: true },
+      distinct: ["room"],
+      orderBy: { room: "asc" },
+    }),
+  ]);
 
-  return NextResponse.json(students);
+  return NextResponse.json({
+    students,
+    totalCount,
+    rooms: roomsData.map((r) => r.room),
+  });
 }
 
 export async function DELETE(req: NextRequest) {

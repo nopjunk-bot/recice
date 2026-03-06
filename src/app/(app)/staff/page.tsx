@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { UserPlus, Trash2 } from "lucide-react";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
 type Staff = {
@@ -151,8 +152,7 @@ export default function StaffPage() {
               </div>
               <div className="space-y-2">
                 <Label>รหัสผ่าน</Label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={form.password}
                   onChange={(e) =>
                     setForm({ ...form, password: e.target.value })

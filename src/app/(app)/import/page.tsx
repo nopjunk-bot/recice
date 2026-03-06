@@ -33,7 +33,7 @@ type Student = {
   level: string;
   room: string;
   receiptType: string;
-  receipts: { id: string }[];
+  _count: { receipts: number };
 };
 
 const receiptTypeLabels: Record<string, string> = {
@@ -60,7 +60,7 @@ export default function ImportPage() {
     if (filterType) params.set("receiptType", filterType);
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
-    setStudents(data);
+    setStudents(data.students);
   }
 
   async function handleUpload() {
@@ -228,7 +228,7 @@ export default function ImportPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {s.receipts.length > 0 ? (
+                    {s._count.receipts > 0 ? (
                       <Badge className="bg-green-100 text-green-700">
                         พิมพ์แล้ว
                       </Badge>
