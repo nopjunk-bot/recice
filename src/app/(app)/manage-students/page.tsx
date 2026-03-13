@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -53,6 +53,7 @@ const receiptTypeLabels: Record<string, string> = {
 export default function ManageStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -60,16 +61,27 @@ export default function ManageStudentsPage() {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [totalCount, setTotalCount] = useState(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce search — รอ 400ms หลังพิมพ์เสร็จค่อย query
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
 
   const loadStudents = useCallback(async () => {
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     if (filterType) params.set("receiptType", filterType);
+    params.set("includeAllCount", "true");
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(data.students);
     setTotalCount(data.totalCount);
-  }, [search, filterType]);
+  }, [debouncedSearch, filterType]);
 
   useEffect(() => {
     loadStudents();
@@ -203,7 +215,7 @@ export default function ManageStudentsPage() {
               <Input
                 placeholder="ค้นหาชื่อ หรือ เลขประจำตัว..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9"
               />
             </div>

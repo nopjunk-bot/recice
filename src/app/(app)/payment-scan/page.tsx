@@ -11,7 +11,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -20,14 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Tabs,
   TabsContent,
@@ -38,11 +29,10 @@ import {
   ScanBarcode,
   CheckCircle2,
   XCircle,
-  Trash2,
-  AlertTriangle,
-  Banknote,
+  ClipboardCheck,
   UserX,
   Search,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,16 +52,16 @@ type ScanResult = {
   receipt: {
     receiptNumber: string;
     totalAmount: number;
-    paidAt: string;
   };
-  alreadyPaid: boolean;
+  status: "confirmed_unpaid" | "already_confirmed" | "already_paid";
+  error?: string;
 };
 
 type ScanRecord = {
   student: StudentInfo;
   totalAmount: number;
   time: string;
-  alreadyPaid: boolean;
+  status: "confirmed_unpaid" | "already_confirmed" | "already_paid";
 };
 
 type UnpaidStudent = {
@@ -83,7 +73,13 @@ type UnpaidStudent = {
   level: string;
   room: string;
   receiptType: string;
-  receipts: { id: string; paidAt: string | null; totalAmount: number }[];
+  receipts: {
+    id: string;
+    paidAt: string | null;
+    totalAmount: number;
+    unpaidConfirmedAt: string | null;
+    unpaidConfirmedBy: { name: string } | null;
+  }[];
 };
 
 const receiptTypeLabels: Record<string, string> = {
@@ -97,15 +93,17 @@ export default function PaymentScanPage() {
   const [loading, setLoading] = useState(false);
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastScanRef = useRef<{ code: string; time: number }>({
+    code: "",
+    time: 0,
+  });
 
   // Unpaid students tab state
   const [unpaidStudents, setUnpaidStudents] = useState<UnpaidStudent[]>([]);
   const [unpaidSearch, setUnpaidSearch] = useState("");
   const [unpaidLoading, setUnpaidLoading] = useState(false);
   const [totalUnpaid, setTotalUnpaid] = useState(0);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [totalConfirmed, setTotalConfirmed] = useState(0);
   const [activeTab, setActiveTab] = useState("scan");
 
   // Auto-focus input on mount and tab change
@@ -123,10 +121,8 @@ export default function PaymentScanPage() {
   }, [activeTab]);
 
   const focusInput = useCallback(() => {
-    setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 100);
+    inputRef.current?.focus();
+    inputRef.current?.select();
   }, []);
 
   function playBeep(success: boolean) {
@@ -147,32 +143,53 @@ export default function PaymentScanPage() {
   }
 
   async function handleScan() {
-    if (!barcode.trim()) return;
+    const trimmed = barcode.trim();
+    if (!trimmed) return;
+
+    // Prevent double-scan within 500ms
+    const now = Date.now();
+    if (
+      trimmed === lastScanRef.current.code &&
+      now - lastScanRef.current.time < 500
+    ) {
+      setBarcode("");
+      focusInput();
+      return;
+    }
+    lastScanRef.current = { code: trimmed, time: now };
+
+    // Optimistic: clear input immediately for faster scanning
+    setBarcode("");
     setLoading(true);
 
     try {
       const res = await fetch(
-        `/api/payment-scan?barcode=${encodeURIComponent(barcode.trim())}`
+        `/api/payment-scan?barcode=${encodeURIComponent(trimmed)}`
       );
-      const data: ScanResult & { error?: string } = await res.json();
+      const data: ScanResult = await res.json();
 
       if (!res.ok) {
         toast.error(data.error || "เกิดข้อผิดพลาด");
         playBeep(false);
-        setBarcode("");
         focusInput();
         return;
       }
 
-      if (data.alreadyPaid) {
-        toast.warning(
-          `${data.student.prefix}${data.student.firstName} ${data.student.lastName} ชำระเงินแล้ว`,
-          { duration: 3000 }
-        );
+      const fullName = `${data.student.prefix}${data.student.firstName} ${data.student.lastName}`;
+
+      if (data.status === "already_paid") {
+        toast.info(`${fullName} — ชำระเงินแล้ว ไม่ต้องดำเนินการ`, {
+          duration: 3000,
+        });
+        playBeep(false);
+      } else if (data.status === "already_confirmed") {
+        toast.warning(`${fullName} — ยืนยันค้างชำระแล้วก่อนหน้า`, {
+          duration: 3000,
+        });
         playBeep(false);
       } else {
         toast.success(
-          `ชำระเงินสำเร็จ: ${data.student.prefix}${data.student.firstName} ${data.student.lastName} (${data.receipt.totalAmount.toLocaleString()} บาท)`,
+          `ยืนยันค้างชำระสำเร็จ: ${fullName} (${data.receipt.totalAmount.toLocaleString()} บาท)`,
           { duration: 3000 }
         );
         playBeep(true);
@@ -184,12 +201,11 @@ export default function PaymentScanPage() {
           student: data.student,
           totalAmount: data.receipt.totalAmount,
           time: new Date().toLocaleTimeString("th-TH"),
-          alreadyPaid: data.alreadyPaid,
+          status: data.status,
         },
         ...prev,
       ]);
 
-      setBarcode("");
       focusInput();
     } catch {
       toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
@@ -221,6 +237,7 @@ export default function PaymentScanPage() {
       if (res.ok) {
         setUnpaidStudents(data.students);
         setTotalUnpaid(data.totalUnpaid);
+        setTotalConfirmed(data.totalConfirmed);
       }
     } catch {
       toast.error("ไม่สามารถโหลดข้อมูลได้");
@@ -238,55 +255,11 @@ export default function PaymentScanPage() {
     return () => clearTimeout(timer);
   }, [unpaidSearch]);
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    if (selectedIds.size === unpaidStudents.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(unpaidStudents.map((s) => s.id)));
-    }
-  }
-
-  async function handleDeleteUnpaid() {
-    setDeleting(true);
-    try {
-      const res = await fetch("/api/payment-scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "delete-unpaid",
-          studentIds: Array.from(selectedIds),
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(data.error);
-        return;
-      }
-
-      toast.success(data.message);
-      setSelectedIds(new Set());
-      setShowDeleteDialog(false);
-      loadUnpaidStudents();
-    } catch {
-      toast.error("เกิดข้อผิดพลาดในการลบข้อมูล");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  const paidCount = scanHistory.filter((r) => !r.alreadyPaid).length;
-  const totalPaidAmount = scanHistory
-    .filter((r) => !r.alreadyPaid)
+  const confirmedCount = scanHistory.filter(
+    (r) => r.status === "confirmed_unpaid"
+  ).length;
+  const totalUnpaidAmount = scanHistory
+    .filter((r) => r.status === "confirmed_unpaid")
     .reduce((sum, r) => sum + r.totalAmount, 0);
 
   return (
@@ -294,11 +267,12 @@ export default function PaymentScanPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Banknote className="w-7 h-7 text-green-600" />
-            สแกนชำระเงิน
+            <ClipboardCheck className="w-7 h-7 text-orange-600" />
+            ยืนยันค้างชำระ
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            สแกน Barcode ใบเสร็จเพื่อบันทึกการชำระเงิน (บันทึกอัตโนมัติ)
+            สแกน Barcode เพื่อยืนยันว่านักเรียนยังไม่ชำระเงิน
+            (ส่งข้อมูลให้ฝ่ายวิชาการ)
           </p>
         </div>
       </div>
@@ -307,11 +281,11 @@ export default function PaymentScanPage() {
         <TabsList>
           <TabsTrigger value="scan" className="gap-2">
             <ScanBarcode className="w-4 h-4" />
-            สแกนชำระเงิน
+            สแกนยืนยัน
           </TabsTrigger>
           <TabsTrigger value="unpaid" className="gap-2">
             <UserX className="w-4 h-4" />
-            นักเรียนยังไม่ชำระ
+            รายงานค้างชำระ
             {totalUnpaid > 0 && (
               <Badge variant="destructive" className="ml-1 text-xs">
                 {totalUnpaid}
@@ -320,7 +294,7 @@ export default function PaymentScanPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab: Scan Payment */}
+        {/* Tab: Scan Confirm Unpaid */}
         <TabsContent value="scan" className="space-y-4 mt-4">
           {/* Scan Input */}
           <Card>
@@ -341,7 +315,7 @@ export default function PaymentScanPage() {
                 </div>
                 <Button
                   onClick={handleScan}
-                  className="h-12 px-6"
+                  className="h-12 px-6 bg-orange-600 hover:bg-orange-700"
                   disabled={loading || !barcode.trim()}
                 >
                   <ScanBarcode className="w-4 h-4 mr-2" />
@@ -356,36 +330,36 @@ export default function PaymentScanPage() {
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <CardContent className="pt-6 text-center">
-                  <p className="text-3xl font-bold text-green-600">
-                    {paidCount}
+                  <p className="text-3xl font-bold text-orange-600">
+                    {confirmedCount}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    ชำระเงินแล้ววันนี้
+                    ยืนยันค้างชำระแล้ว
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6 text-center">
-                  <p className="text-3xl font-bold text-blue-600">
-                    {totalPaidAmount.toLocaleString()}
+                  <p className="text-3xl font-bold text-red-600">
+                    {totalUnpaidAmount.toLocaleString()}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    ยอดรวม (บาท)
+                    ยอดค้างชำระรวม (บาท)
                   </p>
                 </CardContent>
               </Card>
             </div>
           )}
 
-          {/* Scan History - Right Side */}
+          {/* Scan History */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Banknote className="w-5 h-5" />
+                <ClipboardCheck className="w-5 h-5" />
                 รายการที่สแกนแล้ว
               </CardTitle>
               <CardDescription>
-                แสดงนักเรียนที่สแกนชำระเงินแล้ว (เรียงจากล่าสุด)
+                แสดงนักเรียนที่สแกนยืนยันค้างชำระแล้ว (เรียงจากล่าสุด)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -394,7 +368,7 @@ export default function PaymentScanPage() {
                   <ScanBarcode className="w-16 h-16 mx-auto mb-4 opacity-30" />
                   <p className="text-lg">พร้อมสแกน Barcode</p>
                   <p className="text-sm mt-1">
-                    สแกน Barcode ใบเสร็จเพื่อบันทึกการชำระเงินอัตโนมัติ
+                    สแกน Barcode ใบเสร็จเพื่อยืนยันว่านักเรียนยังไม่ชำระเงิน
                   </p>
                 </div>
               ) : (
@@ -415,7 +389,11 @@ export default function PaymentScanPage() {
                       <TableRow
                         key={i}
                         className={
-                          record.alreadyPaid ? "bg-yellow-50" : "bg-green-50"
+                          record.status === "confirmed_unpaid"
+                            ? "bg-orange-50"
+                            : record.status === "already_confirmed"
+                            ? "bg-yellow-50"
+                            : "bg-green-50"
                         }
                       >
                         <TableCell className="font-mono text-muted-foreground">
@@ -435,18 +413,23 @@ export default function PaymentScanPage() {
                           {record.totalAmount.toLocaleString()}
                         </TableCell>
                         <TableCell>
-                          {record.alreadyPaid ? (
+                          {record.status === "confirmed_unpaid" ? (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-300">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              ยืนยันค้างชำระ
+                            </Badge>
+                          ) : record.status === "already_confirmed" ? (
                             <Badge
                               variant="outline"
                               className="text-yellow-700 border-yellow-300 bg-yellow-100"
                             >
                               <XCircle className="w-3 h-3 mr-1" />
-                              ชำระแล้วก่อนหน้า
+                              ยืนยันแล้วก่อนหน้า
                             </Badge>
                           ) : (
                             <Badge className="bg-green-100 text-green-700 border-green-300">
                               <CheckCircle2 className="w-3 h-3 mr-1" />
-                              ชำระสำเร็จ
+                              ชำระเงินแล้ว
                             </Badge>
                           )}
                         </TableCell>
@@ -462,27 +445,50 @@ export default function PaymentScanPage() {
           </Card>
         </TabsContent>
 
-        {/* Tab: Unpaid Students */}
+        {/* Tab: Unpaid Students Report */}
         <TabsContent value="unpaid" className="space-y-4 mt-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              variant="destructive"
-              disabled={selectedIds.size === 0}
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              ลบที่เลือก ({selectedIds.size} คน)
-            </Button>
+          {/* Summary Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <p className="text-3xl font-bold text-red-600">
+                  {totalUnpaid}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  ค้างชำระทั้งหมด
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <p className="text-3xl font-bold text-orange-600">
+                  {totalConfirmed}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  ยืนยันแล้ว
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <p className="text-3xl font-bold text-gray-600">
+                  {totalUnpaid - totalConfirmed}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  ยังไม่ยืนยัน
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                นักเรียนที่ยังไม่ชำระเงิน
+                รายงานนักเรียนค้างชำระเงิน
               </CardTitle>
               <CardDescription>
-                รายชื่อนักเรียนที่มีใบเสร็จแต่ยังไม่ได้ชำระเงิน
-                หรือยังไม่มีใบเสร็จ
+                รายชื่อนักเรียนที่ยังไม่ชำระเงิน
+                พร้อมสถานะการยืนยันจากผู้ดูแลระบบ
               </CardDescription>
               <div className="mt-3">
                 <div className="relative">
@@ -506,67 +512,68 @@ export default function PaymentScanPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-12">
-                          <div className="flex items-center justify-center">
-                            <Checkbox
-                              checked={
-                                unpaidStudents.length > 0 &&
-                                selectedIds.size === unpaidStudents.length
-                              }
-                              onCheckedChange={selectAll}
-                            />
-                          </div>
-                        </TableHead>
                         <TableHead>เลขประจำตัว</TableHead>
                         <TableHead>ชื่อ-นามสกุล</TableHead>
                         <TableHead>ชั้น/ห้อง</TableHead>
                         <TableHead>ประเภท</TableHead>
                         <TableHead>สถานะใบเสร็จ</TableHead>
+                        <TableHead>สถานะยืนยัน</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {unpaidStudents.map((s) => (
-                        <TableRow
-                          key={s.id}
-                          className={selectedIds.has(s.id) ? "bg-red-50" : ""}
-                        >
-                          <TableCell>
-                            <div className="flex items-center justify-center">
-                              <Checkbox
-                                checked={selectedIds.has(s.id)}
-                                onCheckedChange={() => toggleSelect(s.id)}
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono">
-                            {s.studentCode}
-                          </TableCell>
-                          <TableCell>
-                            {s.prefix}
-                            {s.firstName} {s.lastName}
-                          </TableCell>
-                          <TableCell>
-                            {s.level}/{s.room}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {receiptTypeLabels[s.receiptType]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {s.receipts.length === 0 ? (
-                              <Badge variant="secondary">ยังไม่มีใบเสร็จ</Badge>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="text-orange-700 border-orange-300"
-                              >
-                                ยังไม่ชำระเงิน
+                      {unpaidStudents.map((s) => {
+                        const receipt = s.receipts[0];
+                        return (
+                          <TableRow key={s.id}>
+                            <TableCell className="font-mono">
+                              {s.studentCode}
+                            </TableCell>
+                            <TableCell>
+                              {s.prefix}
+                              {s.firstName} {s.lastName}
+                            </TableCell>
+                            <TableCell>
+                              {s.level}/{s.room}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {receiptTypeLabels[s.receiptType]}
                               </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableCell>
+                            <TableCell>
+                              {!receipt ? (
+                                <Badge variant="secondary">
+                                  ยังไม่มีใบเสร็จ
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-orange-700 border-orange-300"
+                                >
+                                  ยังไม่ชำระเงิน
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {receipt?.unpaidConfirmedAt ? (
+                                <Badge className="bg-orange-100 text-orange-700 border-orange-300">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  ยืนยันแล้ว
+                                  {receipt.unpaidConfirmedBy &&
+                                    ` (${receipt.unpaidConfirmedBy.name})`}
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-gray-500 border-gray-300"
+                                >
+                                  ยังไม่ยืนยัน
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                       {unpaidStudents.length === 0 && !unpaidLoading && (
                         <TableRow>
                           <TableCell
@@ -587,11 +594,6 @@ export default function PaymentScanPage() {
                       <span>
                         แสดง {unpaidStudents.length} จาก {totalUnpaid} คน
                       </span>
-                      {selectedIds.size > 0 && (
-                        <span className="text-red-600 font-medium">
-                          เลือกแล้ว {selectedIds.size} คน
-                        </span>
-                      )}
                     </div>
                   )}
                 </>
@@ -600,45 +602,6 @@ export default function PaymentScanPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <AlertTriangle className="w-5 h-5" />
-              ยืนยันการลบนักเรียนที่ยังไม่ชำระเงิน
-            </DialogTitle>
-            <DialogDescription>
-              คุณกำลังจะลบข้อมูลนักเรียน{" "}
-              <strong>{selectedIds.size} คน</strong> ที่ยังไม่ชำระเงินอย่างถาวร
-              ข้อมูลที่เกี่ยวข้องทั้งหมด (ใบเสร็จ, ข้อมูลสวัสดิการ)
-              จะถูกลบไปด้วย
-              <br />
-              <span className="text-red-600 font-medium">
-                การดำเนินการนี้ไม่สามารถย้อนกลับได้
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteDialog(false)}
-              disabled={deleting}
-            >
-              ยกเลิก
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteUnpaid}
-              disabled={deleting}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              {deleting ? "กำลังลบ..." : `ลบ ${selectedIds.size} คน`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

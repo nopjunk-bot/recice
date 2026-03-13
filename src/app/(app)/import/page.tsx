@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,15 +48,26 @@ export default function ImportPage() {
   const [uploading, setUploading] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce search — รอ 400ms หลังพิมพ์เสร็จค่อย query (ลด API calls)
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }
 
   useEffect(() => {
     loadStudents();
-  }, [search, filterType]);
+  }, [debouncedSearch, filterType]);
 
   async function loadStudents() {
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     if (filterType) params.set("receiptType", filterType);
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
@@ -182,7 +193,7 @@ export default function ImportPage() {
               <Input
                 placeholder="ค้นหาชื่อ หรือ เลขประจำตัว..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9"
               />
             </div>

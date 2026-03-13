@@ -28,9 +28,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  importBatches ImportBatch[]
-  receipts      Receipt[]
-  distributions WelfareDistribution[]
+  importBatches       ImportBatch[]
+  receipts            Receipt[]            @relation("GeneratedReceipts")
+  unpaidConfirmations Receipt[]            @relation("UnpaidConfirmations")
+  distributions       WelfareDistribution[]
 }
 
 model Student {
@@ -69,10 +70,13 @@ model Receipt {
   receiptType   ReceiptType
   totalAmount   Float
   barcodeData   String
-  paidAt        DateTime?
-  generatedAt   DateTime    @default(now())
-  generatedById String
-  generatedBy   User        @relation(fields: [generatedById], references: [id])
+  paidAt              DateTime?
+  generatedAt         DateTime    @default(now())
+  generatedById       String
+  generatedBy         User        @relation("GeneratedReceipts", fields: [generatedById], references: [id])
+  unpaidConfirmedAt   DateTime?
+  unpaidConfirmedById String?
+  unpaidConfirmedBy   User?       @relation("UnpaidConfirmations", fields: [unpaidConfirmedById], references: [id])
 }
 
 model WelfareItem {

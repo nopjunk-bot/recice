@@ -75,6 +75,7 @@ export default function ReceiptsPage() {
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (filterType && filterType !== "all") params.set("receiptType", filterType);
     if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
+    params.set("includeRooms", "true");
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(data.students);

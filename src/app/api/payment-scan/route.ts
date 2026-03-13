@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 
-// GET: lookup student by barcode and auto-mark as paid
+// GET: lookup student by barcode and confirm as unpaid
 export async function GET(req: NextRequest) {
   const user = await getSession();
   if (!user || user.role !== "ADMIN") {
@@ -19,10 +19,8 @@ export async function GET(req: NextRequest) {
   // Barcode format: studentCode-receiptType
   const studentCode = barcode.split("-")[0];
 
-  const student = await prisma.student.findFirst({
-    where: {
-      OR: [{ studentCode }, { studentCode: barcode }],
-    },
+  const student = await prisma.student.findUnique({
+    where: { studentCode },
     include: {
       receipts: {
         select: {
@@ -30,7 +28,9 @@ export async function GET(req: NextRequest) {
           receiptNumber: true,
           totalAmount: true,
           paidAt: true,
+          unpaidConfirmedAt: true,
         },
+        take: 1,
       },
     },
   });
@@ -51,54 +51,57 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const studentData = {
+    id: student.id,
+    studentCode: student.studentCode,
+    prefix: student.prefix,
+    firstName: student.firstName,
+    lastName: student.lastName,
+    level: student.level,
+    room: student.room,
+    receiptType: student.receiptType,
+  };
+
+  const receiptData = {
+    receiptNumber: receipt.receiptNumber,
+    totalAmount: receipt.totalAmount,
+  };
+
+  // Case 1: Already paid — no action needed
   if (receipt.paidAt) {
     return NextResponse.json({
-      student: {
-        id: student.id,
-        studentCode: student.studentCode,
-        prefix: student.prefix,
-        firstName: student.firstName,
-        lastName: student.lastName,
-        level: student.level,
-        room: student.room,
-        receiptType: student.receiptType,
-      },
-      receipt: {
-        receiptNumber: receipt.receiptNumber,
-        totalAmount: receipt.totalAmount,
-        paidAt: receipt.paidAt,
-      },
-      alreadyPaid: true,
+      student: studentData,
+      receipt: receiptData,
+      status: "already_paid",
     });
   }
 
-  // Auto-mark as paid
-  const updatedReceipt = await prisma.receipt.update({
+  // Case 2: Already confirmed as unpaid
+  if (receipt.unpaidConfirmedAt) {
+    return NextResponse.json({
+      student: studentData,
+      receipt: receiptData,
+      status: "already_confirmed",
+    });
+  }
+
+  // Case 3: Confirm as unpaid
+  await prisma.receipt.update({
     where: { id: receipt.id },
-    data: { paidAt: new Date() },
+    data: {
+      unpaidConfirmedAt: new Date(),
+      unpaidConfirmedById: user.id,
+    },
   });
 
   return NextResponse.json({
-    student: {
-      id: student.id,
-      studentCode: student.studentCode,
-      prefix: student.prefix,
-      firstName: student.firstName,
-      lastName: student.lastName,
-      level: student.level,
-      room: student.room,
-      receiptType: student.receiptType,
-    },
-    receipt: {
-      receiptNumber: updatedReceipt.receiptNumber,
-      totalAmount: updatedReceipt.totalAmount,
-      paidAt: updatedReceipt.paidAt,
-    },
-    alreadyPaid: false,
+    student: studentData,
+    receipt: receiptData,
+    status: "confirmed_unpaid",
   });
 }
 
-// POST: get unpaid students list
+// POST: get unpaid students report
 export async function POST(req: NextRequest) {
   const user = await getSession();
   if (!user || user.role !== "ADMIN") {
@@ -128,9 +131,7 @@ export async function POST(req: NextRequest) {
       where: {
         ...where,
         OR: [
-          // No receipt at all
           { receipts: { none: {} }, ...where },
-          // Has receipt but not paid
           {
             receipts: { some: { paidAt: null } },
             ...where,
@@ -139,7 +140,15 @@ export async function POST(req: NextRequest) {
       },
       include: {
         receipts: {
-          select: { id: true, paidAt: true, totalAmount: true },
+          select: {
+            id: true,
+            paidAt: true,
+            totalAmount: true,
+            unpaidConfirmedAt: true,
+            unpaidConfirmedBy: {
+              select: { name: true },
+            },
+          },
           take: 1,
         },
       },
@@ -147,67 +156,24 @@ export async function POST(req: NextRequest) {
     });
 
     // Count totals
-    const totalUnpaid = await prisma.student.count({
-      where: {
-        OR: [
-          { receipts: { none: {} } },
-          { receipts: { some: { paidAt: null } } },
-        ],
-      },
-    });
-
-    return NextResponse.json({ students, totalUnpaid });
-  }
-
-  if (action === "delete-unpaid") {
-    const { studentIds } = body;
-
-    if (!studentIds || studentIds.length === 0) {
-      return NextResponse.json(
-        { error: "กรุณาเลือกนักเรียนที่ต้องการลบ" },
-        { status: 400 }
-      );
-    }
-
-    // Verify all selected students are actually unpaid
-    const students = await prisma.student.findMany({
-      where: { id: { in: studentIds } },
-      include: {
-        receipts: { select: { paidAt: true }, take: 1 },
-      },
-    });
-
-    const unpaidStudents = students.filter(
-      (s) => s.receipts.length === 0 || s.receipts[0].paidAt === null
-    );
-
-    if (unpaidStudents.length === 0) {
-      return NextResponse.json(
-        { error: "ไม่พบนักเรียนที่ยังไม่ชำระเงิน" },
-        { status: 400 }
-      );
-    }
-
-    const unpaidIds = unpaidStudents.map((s) => s.id);
-
-    // Delete related data first, then students
-    await prisma.$transaction([
-      prisma.welfareDistribution.deleteMany({
-        where: { studentId: { in: unpaidIds } },
+    const [totalUnpaid, totalConfirmed] = await Promise.all([
+      prisma.student.count({
+        where: {
+          OR: [
+            { receipts: { none: {} } },
+            { receipts: { some: { paidAt: null } } },
+          ],
+        },
       }),
-      prisma.receipt.deleteMany({
-        where: { studentId: { in: unpaidIds } },
-      }),
-      prisma.student.deleteMany({
-        where: { id: { in: unpaidIds } },
+      prisma.receipt.count({
+        where: {
+          paidAt: null,
+          unpaidConfirmedAt: { not: null },
+        },
       }),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      deletedCount: unpaidIds.length,
-      message: `ลบข้อมูลนักเรียนที่ยังไม่ชำระเงินสำเร็จ ${unpaidIds.length} คน`,
-    });
+    return NextResponse.json({ students, totalUnpaid, totalConfirmed });
   }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 });

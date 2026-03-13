@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScanBarcode, Save, CheckCircle2, XCircle, History } from "lucide-react";
+import { ScanBarcode, Save, CheckCircle2, XCircle, History, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 const CLOTHING_KEYWORDS = ["เสื้อ", "กางเกง"];
@@ -67,7 +68,11 @@ export default function ScanPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<ScanRecord[]>([]);
+  const [quickMode, setQuickMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Cache welfare items — โหลดครั้งเดียว ไม่ต้องดึงซ้ำทุกครั้งที่สแกน
+  const cachedItemsRef = useRef<WelfareItem[] | null>(null);
 
   // Auto-focus input
   useEffect(() => {
@@ -82,32 +87,46 @@ export default function ScanPage() {
     }, 100);
   }, []);
 
+  const addHistory = useCallback((name: string, code: string, success: boolean) => {
+    setHistory((prev) => [
+      { name, code, time: new Date().toLocaleTimeString("th-TH"), success },
+      ...prev.slice(0, 9),
+    ]);
+  }, []);
+
   async function handleScan() {
     if (!barcode.trim()) return;
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/scan?barcode=${encodeURIComponent(barcode.trim())}`);
+      // ถ้ามี cache welfare items แล้ว → ส่ง skipItems=true เพื่อประหยัด 1 query
+      const skipItems = cachedItemsRef.current !== null;
+      const res = await fetch(
+        `/api/scan?barcode=${encodeURIComponent(barcode.trim())}&skipItems=${skipItems}`
+      );
       const data = await res.json();
 
       if (!res.ok) {
         toast.error(data.error);
         playBeep(false);
-        setHistory((prev) => [
-          { name: "ไม่พบ", code: barcode, time: new Date().toLocaleTimeString("th-TH"), success: false },
-          ...prev.slice(0, 4),
-        ]);
+        addHistory("ไม่พบ", barcode, false);
         setStudent(null);
         setBarcode("");
         focusInput();
         return;
       }
 
-      setStudent(data.student);
+      // อัปเดต cache welfare items ถ้าได้มาจาก API
+      if (data.welfareItems) {
+        cachedItemsRef.current = data.welfareItems;
+      }
+      const welfareItems = cachedItemsRef.current || [];
 
-      // Set item states - default all received
-      const states: ItemState[] = data.welfareItems.map((item: WelfareItem) => {
-        const existing = data.student.distributions.find(
+      const scannedStudent: Student = data.student;
+
+      // สร้าง item states
+      const states: ItemState[] = welfareItems.map((item: WelfareItem) => {
+        const existing = scannedStudent.distributions.find(
           (d: Distribution) => d.itemId === item.id
         );
         return {
@@ -118,6 +137,49 @@ export default function ScanPage() {
           pendingSize: existing?.pendingSize || "",
         };
       });
+
+      // โหมดสแกนเร็ว: ถ้านักเรียนยังไม่เคยสแกน → บันทึก "รับทั้งหมด" อัตโนมัติ
+      if (quickMode && scannedStudent.distributions.length === 0) {
+        setBarcode("");
+        playBeep(true);
+
+        // บันทึกทันทีโดยไม่ต้องกด Enter อีกครั้ง
+        const saveRes = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: scannedStudent.id,
+            items: states.map((s) => ({
+              itemId: s.itemId,
+              received: true,
+              reason: "",
+              pendingSize: null,
+            })),
+          }),
+        });
+
+        if (saveRes.ok) {
+          toast.success(
+            `บันทึกสำเร็จ: ${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`
+          );
+          addHistory(
+            `${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`,
+            scannedStudent.studentCode,
+            true
+          );
+          setStudent(null);
+          setItemStates([]);
+        } else {
+          toast.error("บันทึกไม่สำเร็จ — เปิดรายละเอียดให้แก้ไข");
+          setStudent(scannedStudent);
+          setItemStates(states);
+        }
+        focusInput();
+        return;
+      }
+
+      // โหมดปกติ: แสดงรายละเอียดให้ตรวจสอบก่อนบันทึก
+      setStudent(scannedStudent);
       setItemStates(states);
       setBarcode("");
       playBeep(true);
@@ -151,15 +213,11 @@ export default function ScanPage() {
         toast.success(
           `บันทึกสำเร็จ: ${student.prefix}${student.firstName} ${student.lastName}`
         );
-        setHistory((prev) => [
-          {
-            name: `${student.prefix}${student.firstName} ${student.lastName}`,
-            code: student.studentCode,
-            time: new Date().toLocaleTimeString("th-TH"),
-            success: true,
-          },
-          ...prev.slice(0, 4),
-        ]);
+        addHistory(
+          `${student.prefix}${student.firstName} ${student.lastName}`,
+          student.studentCode,
+          true
+        );
         setStudent(null);
         setItemStates([]);
         focusInput();
@@ -229,7 +287,28 @@ export default function ScanPage() {
 
   return (
     <div className="space-y-6" onKeyDown={handleKeyDown}>
-      <h1 className="text-2xl font-bold">สแกน Barcode - ร้านสวัสดิการ</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">สแกน Barcode - ร้านสวัสดิการ</h1>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="quick-mode"
+            checked={quickMode}
+            onCheckedChange={setQuickMode}
+          />
+          <Label htmlFor="quick-mode" className="flex items-center gap-1.5 cursor-pointer text-sm">
+            <Zap className={`w-4 h-4 ${quickMode ? "text-yellow-500" : "text-muted-foreground"}`} />
+            สแกนเร็ว
+          </Label>
+        </div>
+      </div>
+
+      {/* Quick Mode Info */}
+      {quickMode && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+          <strong>โหมดสแกนเร็ว:</strong> สแกนแล้วบันทึก &quot;รับทั้งหมด&quot; ทันที ไม่ต้องกด Enter อีกครั้ง
+          (ถ้านักเรียนเคยสแกนแล้ว จะแสดงรายละเอียดให้แก้ไขตามปกติ)
+        </div>
+      )}
 
       {/* Scan Input */}
       <Card>
@@ -260,7 +339,7 @@ export default function ScanPage() {
               ) : (
                 <>
                   <ScanBarcode className="w-4 h-4 mr-2" />
-                  สแกน
+                  {loading ? "กำลังค้น..." : "สแกน"}
                 </>
               )}
             </Button>

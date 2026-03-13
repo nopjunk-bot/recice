@@ -14,8 +14,11 @@ export async function GET(req: NextRequest) {
   const level = searchParams.get("level") || "";
   const room = searchParams.get("room") || "";
   const includeDistributions = searchParams.get("includeDistributions") === "true";
+  const includeRooms = searchParams.get("includeRooms") === "true";
+  const includeAllCount = searchParams.get("includeAllCount") === "true";
 
   const where: Record<string, unknown> = {};
+  const hasFilter = !!(search || receiptType || level || room);
 
   if (search) {
     where.OR = [
@@ -37,7 +40,12 @@ export async function GET(req: NextRequest) {
     where.room = room;
   }
 
-  const [students, totalCount, roomsData] = await Promise.all([
+  // สร้าง queries เฉพาะที่จำเป็น — ลด query ที่ไม่ได้ใช้
+  const queries: [
+    Promise<unknown>,
+    Promise<number | null>,
+    Promise<{ room: string }[] | null>,
+  ] = [
     prisma.student.findMany({
       where,
       orderBy: { studentCode: "asc" },
@@ -46,19 +54,33 @@ export async function GET(req: NextRequest) {
         ...(includeDistributions && { distributions: { include: { item: true } } }),
       },
     }),
-    prisma.student.count(),
-    prisma.student.findMany({
-      select: { room: true },
-      distinct: ["room"],
-      orderBy: { room: "asc" },
-    }),
-  ]);
+    // ดึง allCount เฉพาะเมื่อต้องการ (หน้าจัดการนักเรียน)
+    includeAllCount && hasFilter
+      ? prisma.student.count()
+      : Promise.resolve(null),
+    // ดึง rooms เฉพาะเมื่อต้องการ (หน้าที่มี room filter)
+    includeRooms
+      ? prisma.student.findMany({
+          select: { room: true },
+          distinct: ["room"],
+          orderBy: { room: "asc" },
+        })
+      : Promise.resolve(null),
+  ];
 
-  return NextResponse.json({
+  const [students, allCount, roomsData] = await Promise.all(queries);
+  const studentList = students as { id: string }[];
+
+  const result: Record<string, unknown> = {
     students,
-    totalCount,
-    rooms: roomsData.map((r) => r.room),
-  });
+    totalCount: allCount ?? studentList.length,
+  };
+
+  if (roomsData) {
+    result.rooms = (roomsData as { room: string }[]).map((r) => r.room);
+  }
+
+  return NextResponse.json(result);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -69,9 +91,12 @@ export async function DELETE(req: NextRequest) {
 
   const { id } = await req.json();
 
-  await prisma.welfareDistribution.deleteMany({ where: { studentId: id } });
-  await prisma.receipt.deleteMany({ where: { studentId: id } });
-  await prisma.student.delete({ where: { id } });
+  // ลบข้อมูลที่เกี่ยวข้องทั้งหมดใน transaction เดียว (3 queries → 1 transaction)
+  await prisma.$transaction([
+    prisma.welfareDistribution.deleteMany({ where: { studentId: id } }),
+    prisma.receipt.deleteMany({ where: { studentId: id } }),
+    prisma.student.delete({ where: { id } }),
+  ]);
 
   return NextResponse.json({ success: true });
 }

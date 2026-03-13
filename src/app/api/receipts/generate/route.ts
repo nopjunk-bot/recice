@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
     );
 
     const receiptsData = [];
+    const newRecordsToCreate = [];
 
     for (const student of students) {
       const existing = receiptMap.get(student.id);
@@ -59,16 +60,14 @@ export async function POST(req: NextRequest) {
       const receiptNumber = `${String(counter).padStart(5, "0")}/1/2569`;
       const barcodeData = `${student.studentCode}-${student.receiptType}`;
 
-      await prisma.receipt.create({
-        data: {
-          receiptNumber,
-          studentId: student.id,
-          receiptType: student.receiptType,
-          totalAmount:
-            receiptConfigs[student.receiptType as ReceiptTypeKey].total,
-          barcodeData,
-          generatedById: user.id,
-        },
+      newRecordsToCreate.push({
+        receiptNumber,
+        studentId: student.id,
+        receiptType: student.receiptType,
+        totalAmount:
+          receiptConfigs[student.receiptType as ReceiptTypeKey].total,
+        barcodeData,
+        generatedById: user.id,
       });
 
       receiptsData.push({
@@ -79,6 +78,11 @@ export async function POST(req: NextRequest) {
       });
 
       counter++;
+    }
+
+    // สร้างใบเสร็จทั้งหมดในครั้งเดียว แทนที่จะสร้างทีละใบใน loop
+    if (newRecordsToCreate.length > 0) {
+      await prisma.receipt.createMany({ data: newRecordsToCreate });
     }
 
     return NextResponse.json({ receipts: receiptsData });
