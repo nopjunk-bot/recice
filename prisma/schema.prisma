@@ -69,6 +69,7 @@ model Receipt {
   receiptType   ReceiptType
   totalAmount   Float
   barcodeData   String
+  paidAt        DateTime?
   generatedAt   DateTime    @default(now())
   generatedById String
   generatedBy   User        @relation(fields: [generatedById], references: [id])

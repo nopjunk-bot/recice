@@ -12,6 +12,7 @@ import {
   Users,
   LogOut,
   UserX,
+  Banknote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/dashboard", label: "หน้าหลัก", icon: LayoutDashboard },
   { href: "/import", label: "นำเข้าข้อมูล", icon: Upload },
   { href: "/receipts", label: "พิมพ์ใบเสร็จ", icon: FileText },
+  { href: "/payment-scan", label: "สแกนชำระเงิน", icon: Banknote },
   { href: "/scan", label: "สแกน Barcode", icon: ScanBarcode },
   { href: "/reports", label: "รายงาน", icon: BarChart3 },
   { href: "/staff", label: "จัดการพนักงาน", icon: Users },
