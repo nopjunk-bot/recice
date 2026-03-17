@@ -114,27 +114,31 @@ export async function POST(req: NextRequest) {
   if (action === "unpaid-list") {
     const { search, room, level } = body;
 
-    const where: Record<string, unknown> = {};
+    // สร้าง filters แยกจาก unpaid condition เพื่อป้องกัน bug จากการ spread ซ้ำ
+    const filters: Record<string, unknown>[] = [];
 
     if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: "insensitive" } },
-        { lastName: { contains: search, mode: "insensitive" } },
-        { studentCode: { contains: search, mode: "insensitive" } },
-      ];
+      filters.push({
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+          { studentCode: { contains: search, mode: "insensitive" } },
+        ],
+      });
     }
-    if (room) where.room = room;
-    if (level) where.level = level;
+    if (room) filters.push({ room });
+    if (level) filters.push({ level });
 
     // Students with receipt but not paid, OR students without receipt
     const students = await prisma.student.findMany({
       where: {
-        ...where,
-        OR: [
-          { receipts: { none: {} }, ...where },
+        AND: [
+          ...filters,
           {
-            receipts: { some: { paidAt: null } },
-            ...where,
+            OR: [
+              { receipts: { none: {} } },
+              { receipts: { some: { paidAt: null } } },
+            ],
           },
         ],
       },

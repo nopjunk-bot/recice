@@ -18,16 +18,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ลบข้อมูลที่เกี่ยวข้องก่อน แล้วค่อยลบนักเรียน
-    await prisma.welfareDistribution.deleteMany({
-      where: { studentId: { in: studentIds } },
-    });
-    await prisma.receipt.deleteMany({
-      where: { studentId: { in: studentIds } },
-    });
-    await prisma.student.deleteMany({
-      where: { id: { in: studentIds } },
-    });
+    // ลบข้อมูลที่เกี่ยวข้องทั้งหมดใน transaction เดียว
+    await prisma.$transaction([
+      prisma.welfareDistribution.deleteMany({
+        where: { studentId: { in: studentIds } },
+      }),
+      prisma.receipt.deleteMany({
+        where: { studentId: { in: studentIds } },
+      }),
+      prisma.student.deleteMany({
+        where: { id: { in: studentIds } },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -47,11 +49,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ลบข้อมูลที่เกี่ยวข้องทั้งหมดก่อน
-    await prisma.welfareDistribution.deleteMany();
-    await prisma.receipt.deleteMany();
-    await prisma.student.deleteMany();
-    await prisma.importBatch.deleteMany();
+    // ลบข้อมูลทั้งหมดใน transaction เดียว
+    await prisma.$transaction([
+      prisma.welfareDistribution.deleteMany(),
+      prisma.receipt.deleteMany(),
+      prisma.student.deleteMany(),
+      prisma.importBatch.deleteMany(),
+    ]);
 
     return NextResponse.json({
       success: true,

@@ -68,54 +68,44 @@ export async function POST(req: NextRequest) {
     if (room) whereFilters.room = room;
     if (level) whereFilters.level = level;
 
-    // Students with unpaid receipts (confirmed as unpaid)
-    const students = await prisma.student.findMany({
-      where: {
-        ...whereFilters,
-        receipts: {
-          some: {
-            paidAt: null,
-            unpaidConfirmedAt: { not: null },
-          },
-        },
+    const unpaidCondition = {
+      receipts: {
+        some: { paidAt: null, unpaidConfirmedAt: { not: null } },
       },
-      include: {
-        receipts: {
-          where: {
-            paidAt: null,
-            unpaidConfirmedAt: { not: null },
-          },
-          select: {
-            id: true,
-            receiptNumber: true,
-            totalAmount: true,
-            unpaidConfirmedAt: true,
-          },
-          take: 1,
-        },
-      },
-      orderBy: [{ level: "asc" }, { room: "asc" }, { studentCode: "asc" }],
-    });
+    };
 
-    // Get available rooms and levels for filters
-    const [rooms, totalUnpaid] = await Promise.all([
+    const hasFilters = !!(search || room || level);
+
+    // รัน queries ทั้งหมดพร้อมกัน — ลดเวลารอ
+    const [students, rooms, totalUnpaid] = await Promise.all([
+      // Query หลัก: นักเรียนค้างชำระ (พร้อม filters)
       prisma.student.findMany({
-        where: {
+        where: { ...whereFilters, ...unpaidCondition },
+        include: {
           receipts: {
-            some: { paidAt: null, unpaidConfirmedAt: { not: null } },
+            where: { paidAt: null, unpaidConfirmedAt: { not: null } },
+            select: {
+              id: true,
+              receiptNumber: true,
+              totalAmount: true,
+              unpaidConfirmedAt: true,
+            },
+            take: 1,
           },
         },
+        orderBy: [{ level: "asc" }, { room: "asc" }, { studentCode: "asc" }],
+      }),
+      // ดึง rooms/levels สำหรับ dropdown (ไม่มี filter)
+      prisma.student.findMany({
+        where: unpaidCondition,
         select: { level: true, room: true },
         distinct: ["level", "room"],
         orderBy: [{ level: "asc" }, { room: "asc" }],
       }),
-      prisma.student.count({
-        where: {
-          receipts: {
-            some: { paidAt: null, unpaidConfirmedAt: { not: null } },
-          },
-        },
-      }),
+      // นับจำนวนทั้งหมดเฉพาะเมื่อมี filter (ถ้าไม่มี filter ใช้ students.length ได้)
+      hasFilters
+        ? prisma.student.count({ where: unpaidCondition })
+        : Promise.resolve(null),
     ]);
 
     // Calculate total unpaid amount
@@ -126,7 +116,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       students,
-      totalUnpaid,
+      totalUnpaid: totalUnpaid ?? students.length,
       totalAmount,
       rooms,
     });

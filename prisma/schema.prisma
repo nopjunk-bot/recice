@@ -49,6 +49,9 @@ model Student {
 
   receipts      Receipt[]
   distributions WelfareDistribution[]
+
+  @@index([level, room])
+  @@index([importBatchId])
 }
 
 model ImportBatch {
@@ -60,6 +63,8 @@ model ImportBatch {
   totalStudents Int
 
   students Student[]
+
+  @@index([importedById])
 }
 
 model Receipt {
@@ -77,6 +82,11 @@ model Receipt {
   unpaidConfirmedAt   DateTime?
   unpaidConfirmedById String?
   unpaidConfirmedBy   User?       @relation("UnpaidConfirmations", fields: [unpaidConfirmedById], references: [id])
+
+  @@index([studentId])
+  @@index([paidAt])
+  @@index([unpaidConfirmedAt])
+  @@index([generatedById])
 }
 
 model WelfareItem {
@@ -100,5 +110,8 @@ model WelfareDistribution {
   scannedBy         User     @relation(fields: [scannedById], references: [id])
   scannedAt         DateTime @default(now())
 
+  @@index([studentId])
+  @@index([itemId])
+  @@index([received])
   @@unique([studentId, itemId])
 }

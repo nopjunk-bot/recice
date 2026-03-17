@@ -90,16 +90,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create students
-    for (const student of newStudents) {
-      await prisma.student.create({
-        data: {
-          ...student,
-          receiptType: receiptType as "M1" | "M4_GENERAL" | "M4_LANG",
-          importBatchId: batch.id,
-        },
-      });
-    }
+    // Create students (batch insert — 1 query แทน N queries)
+    await prisma.student.createMany({
+      data: newStudents.map((student) => ({
+        ...student,
+        receiptType: receiptType as "M1" | "M4_GENERAL" | "M4_LANG",
+        importBatchId: batch.id,
+      })),
+    });
 
     return NextResponse.json({
       success: true,
