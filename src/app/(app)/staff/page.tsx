@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Trash2 } from "lucide-react";
+import { UserPlus, Trash2, Pencil } from "lucide-react";
 import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
@@ -55,7 +55,15 @@ const roleColors: Record<string, string> = {
 export default function StaffPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "",
+  });
+  const [editForm, setEditForm] = useState({
     name: "",
     email: "",
     password: "",
@@ -92,6 +100,37 @@ export default function StaffPage() {
     toast.success("เพิ่มพนักงานสำเร็จ");
     setForm({ name: "", email: "", password: "", role: "" });
     setOpen(false);
+    loadStaff();
+  }
+
+  function openEdit(s: Staff) {
+    setEditingStaff(s);
+    setEditForm({ name: s.name, email: s.email, password: "", role: s.role });
+    setEditOpen(true);
+  }
+
+  async function handleEdit() {
+    if (!editingStaff) return;
+    if (!editForm.name || !editForm.email || !editForm.role) {
+      toast.error("กรุณากรอกข้อมูลให้ครบ");
+      return;
+    }
+
+    const res = await fetch("/api/staff", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingStaff.id, ...editForm }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error);
+      return;
+    }
+
+    toast.success("แก้ไขข้อมูลสำเร็จ");
+    setEditOpen(false);
+    setEditingStaff(null);
     loadStaff();
   }
 
@@ -219,13 +258,22 @@ export default function StaffPage() {
                     {new Date(s.createdAt).toLocaleDateString("th-TH")}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(s.id, s.name)}
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(s)}
+                      >
+                        <Pencil className="w-4 h-4 text-blue-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(s.id, s.name)}
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -233,6 +281,70 @@ export default function StaffPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>แก้ไขข้อมูลพนักงาน</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>ชื่อ-นามสกุล</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, name: e.target.value })
+                }
+                placeholder="ชื่อพนักงาน"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>อีเมล</Label>
+              <Input
+                type="email"
+                value={editForm.email}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, email: e.target.value })
+                }
+                placeholder="email@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>รหัสผ่านใหม่ (เว้นว่างถ้าไม่ต้องการเปลี่ยน)</Label>
+              <PasswordInput
+                value={editForm.password}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, password: e.target.value })
+                }
+                placeholder="รหัสผ่านใหม่"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>บทบาท</Label>
+              <Select
+                value={editForm.role}
+                onValueChange={(v) => setEditForm({ ...editForm, role: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกบทบาท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">ผู้ดูแลระบบ</SelectItem>
+                  <SelectItem value="DATA_ENTRY">
+                    พนักงานนำเข้าข้อมูล
+                  </SelectItem>
+                  <SelectItem value="WELFARE_STAFF">
+                    พนักงานร้านสวัสดิการ
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleEdit} className="w-full">
+              บันทึกการแก้ไข
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

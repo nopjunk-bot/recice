@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import type { Role } from "@/generated/prisma/client";
 import bcrypt from "bcryptjs";
 
 export async function GET() {
@@ -51,6 +52,47 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json(newUser);
+}
+
+export async function PUT(req: NextRequest) {
+  const user = await getSession();
+  if (!user || user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id, name, email, password, role } = await req.json();
+
+  if (!id || !name || !email || !role) {
+    return NextResponse.json({ error: "ข้อมูลไม่ครบ" }, { status: 400 });
+  }
+
+  // ตรวจสอบอีเมลซ้ำ (ยกเว้นตัวเอง)
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing && existing.id !== id) {
+    return NextResponse.json(
+      { error: "อีเมลนี้ถูกใช้แล้ว" },
+      { status: 400 }
+    );
+  }
+
+  const updateData: { name: string; email: string; role: Role; password?: string } = {
+    name,
+    email,
+    role: role as Role,
+  };
+
+  // อัปเดตรหัสผ่านเฉพาะเมื่อกรอกมา
+  if (password) {
+    updateData.password = await bcrypt.hash(password, 10);
+  }
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data: updateData,
+    select: { id: true, name: true, email: true, role: true, createdAt: true },
+  });
+
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(req: NextRequest) {
