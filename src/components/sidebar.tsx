@@ -13,6 +13,7 @@ import {
   LogOut,
   UserX,
   ClipboardCheck,
+  GitCompareArrows,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/scan", label: "สแกน Barcode", icon: ScanBarcode },
   { href: "/reports", label: "รายงาน", icon: BarChart3 },
   { href: "/staff", label: "จัดการพนักงาน", icon: Users },
+  { href: "/student-matching", label: "จับคู่นักเรียน", icon: GitCompareArrows },
   { href: "/manage-students", label: "ลบข้อมูลนักเรียน", icon: UserX },
 ];
 
