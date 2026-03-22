@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Download, Search, ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -54,6 +54,7 @@ export default function ReceiptsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filteredCount, setFilteredCount] = useState(0);
+  const [downloading, setDownloading] = useState(false);
   const [receiptDate, setReceiptDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -136,6 +137,41 @@ export default function ReceiptsPage() {
     }
   }
 
+  async function handleDownloadList() {
+    setDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterType && filterType !== "all") params.set("receiptType", filterType);
+      if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
+      const res = await fetch(`/api/students/download-list?${params}`);
+      if (!res.ok) {
+        toast.error("ไม่สามารถดาวน์โหลดได้");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Extract filename from header or use default
+      const disposition = res.headers.get("Content-Disposition");
+      let filename = "รายชื่อนักเรียน.xlsx";
+      if (disposition) {
+        const match = disposition.match(/filename\*=UTF-8''(.+)/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("ดาวน์โหลดสำเร็จ");
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการดาวน์โหลด");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function generatePDF(
     receipts: {
       student: Student;
@@ -157,15 +193,25 @@ export default function ReceiptsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">พิมพ์ใบเสร็จรับเงินชั่วคราว</h1>
-        <Button
-          onClick={handleGenerate}
-          disabled={generating || selected.size === 0}
-        >
-          <Download className="w-4 h-4 mr-2" />
-          {generating
-            ? "กำลังสร้าง..."
-            : `สร้าง PDF (${selected.size} ใบ)`}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleDownloadList}
+            disabled={downloading}
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-2" />
+            {downloading ? "กำลังดาวน์โหลด..." : "ดาวน์โหลดรายชื่อ"}
+          </Button>
+          <Button
+            onClick={handleGenerate}
+            disabled={generating || selected.size === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {generating
+              ? "กำลังสร้าง..."
+              : `สร้าง PDF (${selected.size} ใบ)`}
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

@@ -33,7 +33,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 type MatchedStudent = {
   dbId: string;
@@ -199,7 +199,8 @@ export default function StudentMatchingPage() {
   async function handleExport() {
     if (!report) return;
 
-    const wb = new ExcelJS.Workbook();
+    const ExcelJSModule = await import("exceljs");
+    const wb = new ExcelJSModule.default.Workbook();
 
     // Sheet 1: Summary
     const wsSummary = wb.addWorksheet("สรุป");

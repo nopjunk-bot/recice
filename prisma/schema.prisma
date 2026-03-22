@@ -99,6 +99,7 @@ model Receipt {
   @@index([receiptNumber])
   @@index([receiptType])
   @@index([paidAt, unpaidConfirmedAt])
+  @@index([studentId, paidAt])
 
   documentRequests DocumentRequest[]
 }
@@ -147,5 +148,6 @@ model DocumentRequest {
 
   @@index([status])
   @@index([requestRound])
+  @@index([createdAt])
   @@unique([studentId, receiptId])
 }
