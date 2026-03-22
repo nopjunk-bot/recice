@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Search, ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { FileText, Download, Search, ChevronLeft, ChevronRight, FileSpreadsheet, FileDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -55,6 +55,7 @@ export default function ReceiptsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [filteredCount, setFilteredCount] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [receiptDate, setReceiptDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -172,6 +173,33 @@ export default function ReceiptsPage() {
     }
   }
 
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterType && filterType !== "all") params.set("receiptType", filterType);
+      if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
+      params.set("noPagination", "true");
+      const res = await fetch(`/api/students?${params}`);
+      if (!res.ok) {
+        toast.error("ไม่สามารถดาวน์โหลดได้");
+        return;
+      }
+      const data = await res.json();
+      if (!data.students || data.students.length === 0) {
+        toast.error("ไม่พบข้อมูลนักเรียน");
+        return;
+      }
+      const { generateStudentListPDF } = await import("@/lib/student-list-pdf");
+      generateStudentListPDF(data.students);
+      toast.success("ดาวน์โหลด PDF สำเร็จ");
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   async function generatePDF(
     receipts: {
       student: Student;
@@ -196,11 +224,19 @@ export default function ReceiptsPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+          >
+            <FileDown className="w-4 h-4 mr-2" />
+            {downloadingPdf ? "กำลังสร้าง PDF..." : "รายชื่อ PDF"}
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleDownloadList}
             disabled={downloading}
           >
             <FileSpreadsheet className="w-4 h-4 mr-2" />
-            {downloading ? "กำลังดาวน์โหลด..." : "ดาวน์โหลดรายชื่อ"}
+            {downloading ? "กำลังดาวน์โหลด..." : "รายชื่อ Excel"}
           </Button>
           <Button
             onClick={handleGenerate}

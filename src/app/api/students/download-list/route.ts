@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     addEmptySheet(sheet);
   } else {
     for (const [roomKey, roomStudents] of grouped) {
-      const sheetName = `ห้อง ${roomKey}`.substring(0, 31); // Excel sheet name max 31 chars
+      const sheetName = `ห้อง ${roomKey}`.replace(/[*?:\\/\[\]]/g, "-").substring(0, 31); // Excel sheet name max 31 chars
       const sheet = workbook.addWorksheet(sheetName);
       fillSheet(sheet, roomKey, roomStudents);
     }
