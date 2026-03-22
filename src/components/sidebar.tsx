@@ -14,6 +14,7 @@ import {
   UserX,
   ClipboardCheck,
   GitCompareArrows,
+  FileSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/staff", label: "จัดการพนักงาน", icon: Users },
   { href: "/student-matching", label: "จับคู่นักเรียน", icon: GitCompareArrows },
   { href: "/manage-students", label: "ลบข้อมูลนักเรียน", icon: UserX },
+  { href: "/document-requests", label: "คำขอเอกสาร", icon: FileSearch },
 ];
 
 export default function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {

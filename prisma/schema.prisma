@@ -19,6 +19,12 @@ enum ReceiptType {
   M4_LANG
 }
 
+enum DocumentRequestStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -47,8 +53,9 @@ model Student {
   importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
   createdAt     DateTime    @default(now())
 
-  receipts      Receipt[]
-  distributions WelfareDistribution[]
+  receipts          Receipt[]
+  distributions     WelfareDistribution[]
+  documentRequests  DocumentRequest[]
 
   @@index([level, room])
   @@index([importBatchId])
@@ -92,6 +99,8 @@ model Receipt {
   @@index([receiptNumber])
   @@index([receiptType])
   @@index([paidAt, unpaidConfirmedAt])
+
+  documentRequests DocumentRequest[]
 }
 
 model WelfareItem {
@@ -120,4 +129,23 @@ model WelfareDistribution {
   @@index([received])
   @@index([received, itemId])
   @@unique([studentId, itemId])
+}
+
+model DocumentRequest {
+  id            String                @id @default(cuid())
+  studentId     String
+  student       Student               @relation(fields: [studentId], references: [id])
+  receiptId     String
+  receipt       Receipt               @relation(fields: [receiptId], references: [id])
+  studentName   String
+  requestRound  Int
+  status        DocumentRequestStatus @default(PENDING)
+  pickupDate    DateTime?
+  note          String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status])
+  @@index([requestRound])
+  @@unique([studentId, receiptId])
 }
