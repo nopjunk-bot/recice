@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Send,
   RotateCcw,
+  FlaskConical,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
@@ -31,41 +32,27 @@ type RequestResult = {
   pickupDate: string;
 };
 
-// ช่วงเวลาเปิดระบบ
+// ช่วงเวลาเปิดระบบ (แสดงให้ดูเป็นข้อมูลอ้างอิง)
 const REQUEST_ROUNDS = [
   {
     round: 1,
     label: "รอบที่ 1",
     dateRange: "5 - 7 เมษายน 2569",
-    start: new Date(2026, 3, 5),
-    end: new Date(2026, 3, 7, 23, 59, 59),
   },
   {
     round: 2,
     label: "รอบที่ 2",
     dateRange: "18 - 30 เมษายน 2569",
-    start: new Date(2026, 3, 18),
-    end: new Date(2026, 3, 30, 23, 59, 59),
   },
 ];
 
-function getActiveRound(): number | null {
-  const now = new Date();
-  for (const r of REQUEST_ROUNDS) {
-    if (now >= r.start && now <= r.end) return r.round;
-  }
-  return null;
-}
-
-export default function DocumentRequestPage() {
+export default function DocumentRequestTestPage() {
   const [studentCode, setStudentCode] = useState("");
   const [receiptNumber, setReceiptNumber] = useState("");
   const [studentName, setStudentName] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<RequestResult | null>(null);
-
-  const activeRound = getActiveRound();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +64,7 @@ export default function DocumentRequestPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/document-request", {
+      const res = await fetch("/api/document-request/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -129,6 +116,19 @@ export default function DocumentRequestPage() {
           </h1>
         </div>
 
+        {/* แถบแจ้งเตือนโหมดทดสอบ */}
+        <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-xl">
+          <div className="flex items-center gap-3">
+            <FlaskConical className="w-6 h-6 text-purple-600 shrink-0" />
+            <div>
+              <p className="font-bold text-purple-800 text-lg">โหมดทดสอบ</p>
+              <p className="text-sm text-purple-700">
+                หน้านี้สำหรับทดสอบเท่านั้น สามารถกรอกฟอร์มได้ตลอดเวลาโดยไม่ต้องรอช่วงเวลาเปิดระบบ
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* ช่วงเวลาเปิดระบบ */}
         <Card className="mb-6">
           <CardHeader className="pb-3">
@@ -141,11 +141,7 @@ export default function DocumentRequestPage() {
             {REQUEST_ROUNDS.map((r) => (
               <div
                 key={r.round}
-                className={`flex items-center justify-between p-3 rounded-lg border ${
-                  activeRound === r.round
-                    ? "bg-green-50 border-green-200"
-                    : "bg-gray-50 border-gray-200"
-                }`}
+                className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
               >
                 <div className="flex items-center gap-3">
                   <Clock className="w-4 h-4 text-gray-500" />
@@ -154,11 +150,7 @@ export default function DocumentRequestPage() {
                     <span>{r.dateRange}</span>
                   </div>
                 </div>
-                {activeRound === r.round ? (
-                  <Badge className="bg-green-600 text-white">เปิดอยู่</Badge>
-                ) : (
-                  <Badge variant="secondary">ปิด</Badge>
-                )}
+                <Badge className="bg-green-600 text-white">เปิดอยู่ (ทดสอบ)</Badge>
               </div>
             ))}
 
@@ -225,15 +217,13 @@ export default function DocumentRequestPage() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading || !activeRound}
+                  disabled={loading}
                 >
                   {loading ? (
                     <>
                       <RotateCcw className="w-4 h-4 mr-2 animate-spin" />
                       กำลังส่งคำขอ...
                     </>
-                  ) : !activeRound ? (
-                    "ขณะนี้อยู่นอกช่วงเวลาขอเอกสาร"
                   ) : (
                     <>
                       <Send className="w-4 h-4 mr-2" />
@@ -296,9 +286,7 @@ export default function DocumentRequestPage() {
                   สามารถรับได้ในวันและเวลาราชการเท่านั้น
                   <br />
                   สามารถรับเอกสารได้ภายในวันที่{" "}
-                  {result?.round === 1
-                    ? "7 - 10 เมษายน 2569"
-                    : result?.pickupDate || ""}
+                  {result?.pickupDate || ""}
                 </p>
               </div>
 
