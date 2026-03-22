@@ -117,8 +117,9 @@ export async function DELETE(req: NextRequest) {
 
   const { id } = await req.json();
 
-  // ลบข้อมูลที่เกี่ยวข้องทั้งหมดใน transaction เดียว (3 queries → 1 transaction)
+  // ลบข้อมูลที่เกี่ยวข้องทั้งหมดใน transaction เดียว
   await prisma.$transaction([
+    prisma.documentRequest.deleteMany({ where: { studentId: id } }),
     prisma.welfareDistribution.deleteMany({ where: { studentId: id } }),
     prisma.receipt.deleteMany({ where: { studentId: id } }),
     prisma.student.delete({ where: { id } }),

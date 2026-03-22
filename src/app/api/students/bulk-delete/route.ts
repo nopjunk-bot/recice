@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
 
     // ลบข้อมูลที่เกี่ยวข้องทั้งหมดใน transaction เดียว
     await prisma.$transaction([
+      prisma.documentRequest.deleteMany({
+        where: { studentId: { in: studentIds } },
+      }),
       prisma.welfareDistribution.deleteMany({
         where: { studentId: { in: studentIds } },
       }),
@@ -51,6 +54,7 @@ export async function POST(req: NextRequest) {
 
     // ลบข้อมูลทั้งหมดใน transaction เดียว
     await prisma.$transaction([
+      prisma.documentRequest.deleteMany(),
       prisma.welfareDistribution.deleteMany(),
       prisma.receipt.deleteMany(),
       prisma.student.deleteMany(),

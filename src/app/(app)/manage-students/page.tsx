@@ -64,6 +64,8 @@ export default function ManageStudentsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filteredCount, setFilteredCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search — รอ 400ms หลังพิมพ์เสร็จค่อย query
@@ -76,19 +78,42 @@ export default function ManageStudentsPage() {
     }, 400);
   }, []);
 
+  // โหลดจำนวนนักเรียนทั้งหมดครั้งเดียวตอนเปิดหน้า (ไม่ดึงรายชื่อ)
+  useEffect(() => {
+    (async () => {
+      const res = await fetch("/api/students?page=1&limit=1&includeAllCount=true");
+      const data = await res.json();
+      setTotalCount(data.totalCount);
+    })();
+  }, []);
+
   const loadStudents = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (debouncedSearch) params.set("search", debouncedSearch);
-    if (filterType) params.set("receiptType", filterType);
-    params.set("includeAllCount", "true");
-    params.set("page", String(page));
-    params.set("limit", "50");
-    const res = await fetch(`/api/students?${params}`);
-    const data = await res.json();
-    setStudents(data.students);
-    setTotalCount(data.totalCount);
-    setTotalPages(data.totalPages);
-    setFilteredCount(data.filteredCount);
+    // ไม่โหลดถ้ายังไม่ได้ค้นหาหรือกรอง
+    if (!debouncedSearch && !filterType) {
+      setStudents([]);
+      setFilteredCount(0);
+      setTotalPages(1);
+      setHasSearched(false);
+      return;
+    }
+    setLoading(true);
+    setHasSearched(true);
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (filterType) params.set("receiptType", filterType);
+      params.set("includeAllCount", "true");
+      params.set("page", String(page));
+      params.set("limit", "50");
+      const res = await fetch(`/api/students?${params}`);
+      const data = await res.json();
+      setStudents(data.students);
+      setTotalCount(data.totalCount);
+      setTotalPages(data.totalPages);
+      setFilteredCount(data.filteredCount);
+    } finally {
+      setLoading(false);
+    }
   }, [debouncedSearch, filterType, page]);
 
   useEffect(() => {
@@ -136,6 +161,10 @@ export default function ManageStudentsPage() {
       toast.success(data.message);
       setSelectedIds(new Set());
       setShowDeleteSelectedDialog(false);
+      // อัปเดต totalCount หลังลบ
+      const countRes = await fetch("/api/students?page=1&limit=1&includeAllCount=true");
+      const countData = await countRes.json();
+      setTotalCount(countData.totalCount);
       loadStudents();
     } catch {
       toast.error("เกิดข้อผิดพลาดในการลบข้อมูล");
@@ -163,6 +192,7 @@ export default function ManageStudentsPage() {
       setShowDeleteAllDialog(false);
       setConfirmText("");
       setSelectedIds(new Set());
+      setTotalCount(0);
       loadStudents();
     } catch {
       toast.error("เกิดข้อผิดพลาดในการลบข้อมูล");
@@ -227,7 +257,7 @@ export default function ManageStudentsPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={filterType} onValueChange={setFilterType}>
+            <Select value={filterType} onValueChange={(v) => { setFilterType(v === "all" ? "" : v); setPage(1); }}>
               <SelectTrigger className="w-full md:w-56">
                 <SelectValue placeholder="ทุกประเภท" />
               </SelectTrigger>
@@ -305,7 +335,11 @@ export default function ManageStudentsPage() {
                     colSpan={6}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    ยังไม่มีข้อมูลนักเรียน
+                    {loading
+                      ? "กำลังโหลด..."
+                      : !hasSearched
+                      ? "ค้นหาชื่อ เลขประจำตัว หรือเลือกประเภทเพื่อแสดงรายชื่อนักเรียน"
+                      : "ไม่พบข้อมูลนักเรียน"}
                   </TableCell>
                 </TableRow>
               )}
