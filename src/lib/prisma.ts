@@ -6,8 +6,25 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
-  return new PrismaClient({ adapter });
+  const connectionString = process.env.DATABASE_URL!;
+  // เพิ่ม connection pool settings ผ่าน URL params
+  const url = new URL(connectionString);
+  // ตั้งค่า connection pool สำหรับ serverless
+  if (!url.searchParams.has("connection_limit")) {
+    url.searchParams.set("connection_limit", "10");
+  }
+  if (!url.searchParams.has("pool_timeout")) {
+    url.searchParams.set("pool_timeout", "10");
+  }
+
+  const adapter = new PrismaPg({ connectionString: url.toString() });
+  return new PrismaClient({
+    adapter,
+    // แสดง warning สำหรับ slow queries ใน development
+    log: process.env.NODE_ENV === "development"
+      ? ["warn", "error"]
+      : ["error"],
+  });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

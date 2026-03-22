@@ -35,6 +35,8 @@ import {
   Banknote,
   AlertTriangle,
   Lock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
@@ -81,6 +83,8 @@ export default function AcademicPage() {
   const [totalUnpaid, setTotalUnpaid] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Login handler
   async function handleLogin(e: React.FormEvent) {
@@ -136,6 +140,8 @@ export default function AcademicPage() {
           search: search || undefined,
           level: levelFilter || undefined,
           room: roomFilter || undefined,
+          page: String(page),
+          limit: "50",
         }),
       });
 
@@ -150,13 +156,14 @@ export default function AcademicPage() {
         setTotalUnpaid(data.totalUnpaid);
         setTotalAmount(data.totalAmount);
         setRooms(data.rooms);
+        setTotalPages(data.totalPages || 1);
       }
     } catch {
       toast.error("ไม่สามารถโหลดข้อมูลได้");
     } finally {
       setLoading(false);
     }
-  }, [search, selectedLevel, selectedRoom]);
+  }, [search, selectedLevel, selectedRoom, page]);
 
   // Load on login and filter changes
   useEffect(() => {
@@ -175,10 +182,16 @@ export default function AcademicPage() {
     ? rooms.filter((r) => r.level === effectiveLevel)
     : rooms;
 
-  // Reset room when level changes
+  // Reset room and page when level changes
   useEffect(() => {
     setSelectedRoom("");
+    setPage(1);
   }, [selectedLevel]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedRoom]);
 
   // ─── LOGIN SCREEN ───
   if (!isLoggedIn) {
@@ -392,7 +405,7 @@ export default function AcademicPage() {
                         return (
                           <TableRow key={s.id}>
                             <TableCell className="text-muted-foreground">
-                              {i + 1}
+                              {(page - 1) * 50 + i + 1}
                             </TableCell>
                             <TableCell className="font-mono font-bold">
                               {s.studentCode}
@@ -424,7 +437,7 @@ export default function AcademicPage() {
                 </div>
 
                 <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-                  <span>แสดง {students.length} คน</span>
+                  <span>แสดง {students.length} จาก {totalUnpaid} คน</span>
                   <span className="font-semibold text-red-600">
                     ยอดค้างชำระรวม:{" "}
                     {students
@@ -436,6 +449,33 @@ export default function AcademicPage() {
                     บาท
                   </span>
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      ก่อนหน้า
+                    </Button>
+                    <span className="text-sm px-2">
+                      หน้า {page}/{totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                    >
+                      ถัดไป
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </CardContent>

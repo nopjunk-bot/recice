@@ -16,6 +16,10 @@ export async function GET(req: NextRequest) {
   const includeDistributions = searchParams.get("includeDistributions") === "true";
   const includeRooms = searchParams.get("includeRooms") === "true";
   const includeAllCount = searchParams.get("includeAllCount") === "true";
+  // Pagination parameters
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "50");
+  const noPagination = searchParams.get("noPagination") === "true";
 
   const where: Record<string, unknown> = {};
   const hasFilter = !!(search || receiptType || level || room);
@@ -41,23 +45,37 @@ export async function GET(req: NextRequest) {
   }
 
   // สร้าง queries เฉพาะที่จำเป็น — ลด query ที่ไม่ได้ใช้
+  const findManyArgs: Parameters<typeof prisma.student.findMany>[0] = {
+    where,
+    orderBy: { studentCode: "asc" },
+    select: {
+      id: true,
+      studentCode: true,
+      prefix: true,
+      firstName: true,
+      lastName: true,
+      level: true,
+      room: true,
+      receiptType: true,
+      _count: { select: { receipts: true } },
+      ...(includeDistributions && { distributions: { include: { item: true } } }),
+    },
+  };
+
+  // Pagination: skip/take หรือดึงทั้งหมดถ้า noPagination=true
+  if (!noPagination) {
+    findManyArgs.skip = (page - 1) * limit;
+    findManyArgs.take = limit;
+  }
+
   const queries: [
     Promise<unknown>,
-    Promise<number | null>,
+    Promise<number>,
     Promise<{ room: string }[] | null>,
   ] = [
-    prisma.student.findMany({
-      where,
-      orderBy: { studentCode: "asc" },
-      include: {
-        _count: { select: { receipts: true } },
-        ...(includeDistributions && { distributions: { include: { item: true } } }),
-      },
-    }),
-    // ดึง allCount เฉพาะเมื่อต้องการ (หน้าจัดการนักเรียน)
-    includeAllCount && hasFilter
-      ? prisma.student.count()
-      : Promise.resolve(null),
+    prisma.student.findMany(findManyArgs),
+    // นับจำนวนทั้งหมดตาม filter (ใช้สำหรับ pagination + allCount)
+    prisma.student.count({ where }),
     // ดึง rooms เฉพาะเมื่อต้องการ (หน้าที่มี room filter)
     includeRooms
       ? prisma.student.findMany({
@@ -68,12 +86,20 @@ export async function GET(req: NextRequest) {
       : Promise.resolve(null),
   ];
 
-  const [students, allCount, roomsData] = await Promise.all(queries);
-  const studentList = students as { id: string }[];
+  const [students, filteredCount, roomsData] = await Promise.all(queries);
+
+  // allCount = จำนวนทั้งหมดโดยไม่มี filter (สำหรับหน้าจัดการนักเรียน)
+  const allCount = includeAllCount && hasFilter
+    ? await prisma.student.count()
+    : null;
 
   const result: Record<string, unknown> = {
     students,
-    totalCount: allCount ?? studentList.length,
+    totalCount: allCount ?? filteredCount,
+    filteredCount,
+    page,
+    limit,
+    totalPages: noPagination ? 1 : Math.ceil(filteredCount / limit),
   };
 
   if (roomsData) {

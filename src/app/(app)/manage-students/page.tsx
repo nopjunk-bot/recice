@@ -29,7 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trash2, Search, AlertTriangle, CheckSquare, XSquare } from "lucide-react";
+import { Trash2, Search, AlertTriangle, CheckSquare, XSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 type Student = {
@@ -61,6 +61,9 @@ export default function ManageStudentsPage() {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filteredCount, setFilteredCount] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search — รอ 400ms หลังพิมพ์เสร็จค่อย query
@@ -69,6 +72,7 @@ export default function ManageStudentsPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(value);
+      setPage(1);
     }, 400);
   }, []);
 
@@ -77,11 +81,15 @@ export default function ManageStudentsPage() {
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (filterType) params.set("receiptType", filterType);
     params.set("includeAllCount", "true");
+    params.set("page", String(page));
+    params.set("limit", "50");
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(data.students);
     setTotalCount(data.totalCount);
-  }, [debouncedSearch, filterType]);
+    setTotalPages(data.totalPages);
+    setFilteredCount(data.filteredCount);
+  }, [debouncedSearch, filterType, page]);
 
   useEffect(() => {
     loadStudents();
@@ -329,6 +337,38 @@ export default function ManageStudentsPage() {
                   เลือกแล้ว {selectedIds.size} จาก {students.length} คน
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground">
+                แสดง {(page - 1) * 50 + 1}-{Math.min(page * 50, filteredCount)} จาก {filteredCount} คน
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  ก่อนหน้า
+                </Button>
+                <span className="text-sm px-2">
+                  หน้า {page}/{totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  ถัดไป
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

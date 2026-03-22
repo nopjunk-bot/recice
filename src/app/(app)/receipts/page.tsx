@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, Search } from "lucide-react";
+import { FileText, Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -51,6 +51,9 @@ export default function ReceiptsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filteredCount, setFilteredCount] = useState(0);
   const [receiptDate, setReceiptDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -63,12 +66,13 @@ export default function ReceiptsPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(value);
+      setPage(1); // รีเซ็ตไปหน้าแรกเมื่อค้นหาใหม่
     }, 400);
   }, []);
 
   useEffect(() => {
     loadStudents();
-  }, [debouncedSearch, filterType, filterRoom]);
+  }, [debouncedSearch, filterType, filterRoom, page]);
 
   async function loadStudents() {
     const params = new URLSearchParams();
@@ -76,9 +80,13 @@ export default function ReceiptsPage() {
     if (filterType && filterType !== "all") params.set("receiptType", filterType);
     if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
     params.set("includeRooms", "true");
+    params.set("page", String(page));
+    params.set("limit", "50");
     const res = await fetch(`/api/students?${params}`);
     const data = await res.json();
     setStudents(data.students);
+    setTotalPages(data.totalPages);
+    setFilteredCount(data.filteredCount);
     if (data.rooms) setAvailableRooms(data.rooms);
   }
 
@@ -276,6 +284,38 @@ export default function ReceiptsPage() {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground">
+                แสดง {(page - 1) * 50 + 1}-{Math.min(page * 50, filteredCount)} จาก {filteredCount} คน
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  ก่อนหน้า
+                </Button>
+                <span className="text-sm px-2">
+                  หน้า {page}/{totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  ถัดไป
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -21,7 +21,15 @@ export async function GET(req: NextRequest) {
 
   const student = await prisma.student.findUnique({
     where: { studentCode },
-    include: {
+    select: {
+      id: true,
+      studentCode: true,
+      prefix: true,
+      firstName: true,
+      lastName: true,
+      level: true,
+      room: true,
+      receiptType: true,
       receipts: {
         select: {
           id: true,
@@ -142,7 +150,15 @@ export async function POST(req: NextRequest) {
           },
         ],
       },
-      include: {
+      select: {
+        id: true,
+        studentCode: true,
+        prefix: true,
+        firstName: true,
+        lastName: true,
+        level: true,
+        room: true,
+        receiptType: true,
         receipts: {
           select: {
             id: true,

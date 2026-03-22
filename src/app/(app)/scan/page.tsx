@@ -15,8 +15,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScanBarcode, Save, CheckCircle2, XCircle, History, Zap } from "lucide-react";
+import {
+  ScanBarcode,
+  Save,
+  CheckCircle2,
+  XCircle,
+  History,
+  Zap,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  CloudUpload,
+  Loader2,
+  Database,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { useOfflineSync } from "@/hooks/use-offline-sync";
+import {
+  cacheAllData,
+  lookupStudentByBarcode,
+  getWelfareItems as getOfflineWelfareItems,
+  queueScan,
+  updateCachedStudentDistributions,
+  getCachedStudentCount,
+  getLastSyncedAt,
+} from "@/lib/offline-db";
 
 const CLOTHING_KEYWORDS = ["เสื้อ", "กางเกง"];
 const SIZES = ["SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
@@ -59,6 +83,7 @@ type ScanRecord = {
   code: string;
   time: string;
   success: boolean;
+  offline?: boolean;
 };
 
 export default function ScanPage() {
@@ -71,6 +96,15 @@ export default function ScanPage() {
   const [quickMode, setQuickMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Offline Mode ───
+  const { isOnline } = useOnlineStatus();
+  const { pendingCount, isSyncing, syncPending, refreshPendingCount } =
+    useOfflineSync(isOnline);
+  const [cacheReady, setCacheReady] = useState(false);
+  const [cacheCount, setCacheCount] = useState(0);
+  const [lastSynced, setLastSynced] = useState<string>("");
+  const [isCaching, setIsCaching] = useState(false);
+
   // Cache welfare items — โหลดครั้งเดียว ไม่ต้องดึงซ้ำทุกครั้งที่สแกน
   const cachedItemsRef = useRef<WelfareItem[] | null>(null);
 
@@ -78,6 +112,67 @@ export default function ScanPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // ─── โหลดข้อมูลลง IndexedDB เมื่อออนไลน์ ───
+  const loadOfflineCache = useCallback(async () => {
+    setIsCaching(true);
+    try {
+      const res = await fetch("/api/scan/offline-data");
+      if (!res.ok) return;
+      const data = await res.json();
+      await cacheAllData(data.students, data.welfareItems);
+      setCacheCount(data.students.length);
+      setCacheReady(true);
+      setLastSynced(
+        new Date().toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+    } catch {
+      // ถ้าโหลดไม่ได้ ลองใช้ cache เดิม
+      const count = await getCachedStudentCount();
+      if (count > 0) {
+        setCacheReady(true);
+        setCacheCount(count);
+        const syncDate = await getLastSyncedAt();
+        if (syncDate) {
+          setLastSynced(
+            syncDate.toLocaleTimeString("th-TH", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          );
+        }
+      }
+    } finally {
+      setIsCaching(false);
+    }
+  }, []);
+
+  // เมื่อเปิดหน้า: โหลด cache (ถ้าออนไลน์) หรือใช้ cache เดิม (ถ้าออฟไลน์)
+  useEffect(() => {
+    if (isOnline) {
+      loadOfflineCache();
+    } else {
+      // ออฟไลน์: ตรวจสอบว่ามี cache อยู่ไหม
+      getCachedStudentCount().then((count) => {
+        if (count > 0) {
+          setCacheReady(true);
+          setCacheCount(count);
+          getLastSyncedAt().then((d) => {
+            if (d)
+              setLastSynced(
+                d.toLocaleTimeString("th-TH", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              );
+          });
+        }
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus input after save
   const focusInput = useCallback(() => {
@@ -87,98 +182,175 @@ export default function ScanPage() {
     }, 100);
   }, []);
 
-  const addHistory = useCallback((name: string, code: string, success: boolean) => {
-    setHistory((prev) => [
-      { name, code, time: new Date().toLocaleTimeString("th-TH"), success },
-      ...prev.slice(0, 9),
-    ]);
-  }, []);
+  const addHistory = useCallback(
+    (name: string, code: string, success: boolean, offline = false) => {
+      setHistory((prev) => [
+        {
+          name,
+          code,
+          time: new Date().toLocaleTimeString("th-TH"),
+          success,
+          offline,
+        },
+        ...prev.slice(0, 9),
+      ]);
+    },
+    []
+  );
 
+  // ─── สร้าง item states จาก student + welfare items ───
+  function buildItemStates(
+    scannedStudent: Student,
+    welfareItems: WelfareItem[]
+  ): ItemState[] {
+    return welfareItems.map((item) => {
+      const existing = scannedStudent.distributions.find(
+        (d) => d.itemId === item.id
+      );
+      return {
+        itemId: item.id,
+        name: item.name,
+        received: existing ? existing.received : true,
+        reason: "",
+        pendingSize: existing?.pendingSize || "",
+      };
+    });
+  }
+
+  // ─── บันทึกแบบออฟไลน์ ───
+  async function saveOffline(
+    targetStudent: Student,
+    items: { itemId: string; received: boolean; reason: string; pendingSize: string | null }[]
+  ) {
+    const studentName = `${targetStudent.prefix}${targetStudent.firstName} ${targetStudent.lastName}`;
+    await queueScan({
+      studentId: targetStudent.id,
+      studentName,
+      items: items.map((s) => ({
+        itemId: s.itemId,
+        received: s.received,
+        reason: s.reason,
+        pendingSize: s.pendingSize,
+      })),
+      timestamp: Date.now(),
+    });
+
+    // อัปเดต cache ในเครื่องด้วย เพื่อให้สแกนซ้ำเห็นข้อมูลล่าสุด
+    await updateCachedStudentDistributions(
+      targetStudent.studentCode,
+      items.map((s) => ({
+        itemId: s.itemId,
+        received: s.received,
+        pendingSize: s.pendingSize,
+      }))
+    );
+
+    await refreshPendingCount();
+    toast.success(`บันทึกออฟไลน์: ${studentName} (รอ sync)`);
+    addHistory(studentName, targetStudent.studentCode, true, true);
+  }
+
+  // ─── SCAN ───
   async function handleScan() {
     if (!barcode.trim()) return;
     setLoading(true);
 
     try {
-      // ถ้ามี cache welfare items แล้ว → ส่ง skipItems=true เพื่อประหยัด 1 query
-      const skipItems = cachedItemsRef.current !== null;
-      const res = await fetch(
-        `/api/scan?barcode=${encodeURIComponent(barcode.trim())}&skipItems=${skipItems}`
-      );
-      const data = await res.json();
+      let scannedStudent: Student;
+      let welfareItems: WelfareItem[];
 
-      if (!res.ok) {
-        toast.error(data.error);
-        playBeep(false);
-        addHistory("ไม่พบ", barcode, false);
-        setStudent(null);
-        setBarcode("");
-        focusInput();
-        return;
-      }
-
-      // อัปเดต cache welfare items ถ้าได้มาจาก API
-      if (data.welfareItems) {
-        cachedItemsRef.current = data.welfareItems;
-      }
-      const welfareItems = cachedItemsRef.current || [];
-
-      const scannedStudent: Student = data.student;
-
-      // สร้าง item states
-      const states: ItemState[] = welfareItems.map((item: WelfareItem) => {
-        const existing = scannedStudent.distributions.find(
-          (d: Distribution) => d.itemId === item.id
+      if (isOnline) {
+        // ── ออนไลน์: ใช้ API เหมือนเดิม ──
+        const skipItems = cachedItemsRef.current !== null;
+        const res = await fetch(
+          `/api/scan?barcode=${encodeURIComponent(barcode.trim())}&skipItems=${skipItems}`
         );
-        return {
-          itemId: item.id,
-          name: item.name,
-          received: existing ? existing.received : true,
-          reason: "",
-          pendingSize: existing?.pendingSize || "",
-        };
-      });
+        const data = await res.json();
 
-      // โหมดสแกนเร็ว: ถ้านักเรียนยังไม่เคยสแกน → บันทึก "รับทั้งหมด" อัตโนมัติ
+        if (!res.ok) {
+          toast.error(data.error);
+          playBeep(false);
+          addHistory("ไม่พบ", barcode, false);
+          setStudent(null);
+          setBarcode("");
+          focusInput();
+          return;
+        }
+
+        if (data.welfareItems) {
+          cachedItemsRef.current = data.welfareItems;
+        }
+        welfareItems = cachedItemsRef.current || [];
+        scannedStudent = data.student;
+      } else {
+        // ── ออฟไลน์: ค้นจาก IndexedDB ──
+        if (!cacheReady) {
+          toast.error("ไม่มีข้อมูลในแคช กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อโหลดข้อมูลก่อน");
+          setLoading(false);
+          return;
+        }
+
+        const cached = await lookupStudentByBarcode(barcode.trim());
+        if (!cached) {
+          toast.error("ไม่พบข้อมูลนักเรียน (ออฟไลน์)");
+          playBeep(false);
+          addHistory("ไม่พบ", barcode, false, true);
+          setStudent(null);
+          setBarcode("");
+          focusInput();
+          return;
+        }
+
+        scannedStudent = cached as Student;
+        welfareItems = await getOfflineWelfareItems();
+      }
+
+      const states = buildItemStates(scannedStudent, welfareItems);
+
+      // โหมดสแกนเร็ว
       if (quickMode && scannedStudent.distributions.length === 0) {
         setBarcode("");
         playBeep(true);
 
-        // บันทึกทันทีโดยไม่ต้องกด Enter อีกครั้ง
-        const saveRes = await fetch("/api/scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            studentId: scannedStudent.id,
-            items: states.map((s) => ({
-              itemId: s.itemId,
-              received: true,
-              reason: "",
-              pendingSize: null,
-            })),
-          }),
-        });
+        const quickItems = states.map((s) => ({
+          itemId: s.itemId,
+          received: true,
+          reason: "",
+          pendingSize: null,
+        }));
 
-        if (saveRes.ok) {
-          toast.success(
-            `บันทึกสำเร็จ: ${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`
-          );
-          addHistory(
-            `${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`,
-            scannedStudent.studentCode,
-            true
-          );
+        if (isOnline) {
+          const saveRes = await fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId: scannedStudent.id,
+              items: quickItems,
+            }),
+          });
+
+          if (saveRes.ok) {
+            const name = `${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`;
+            toast.success(`บันทึกสำเร็จ: ${name}`);
+            addHistory(name, scannedStudent.studentCode, true);
+            setStudent(null);
+            setItemStates([]);
+          } else {
+            toast.error("บันทึกไม่สำเร็จ — เปิดรายละเอียดให้แก้ไข");
+            setStudent(scannedStudent);
+            setItemStates(states);
+          }
+        } else {
+          // Quick save แบบออฟไลน์
+          await saveOffline(scannedStudent, quickItems);
           setStudent(null);
           setItemStates([]);
-        } else {
-          toast.error("บันทึกไม่สำเร็จ — เปิดรายละเอียดให้แก้ไข");
-          setStudent(scannedStudent);
-          setItemStates(states);
         }
         focusInput();
         return;
       }
 
-      // โหมดปกติ: แสดงรายละเอียดให้ตรวจสอบก่อนบันทึก
+      // โหมดปกติ
       setStudent(scannedStudent);
       setItemStates(states);
       setBarcode("");
@@ -190,45 +362,60 @@ export default function ScanPage() {
     }
   }
 
+  // ─── SAVE ───
   async function handleSave() {
     if (!student) return;
     setSaving(true);
 
     try {
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: student.id,
-          items: itemStates.map((s) => ({
-            itemId: s.itemId,
-            received: s.received,
-            reason: s.reason,
-            pendingSize: s.pendingSize || null,
-          })),
-        }),
-      });
+      const items = itemStates.map((s) => ({
+        itemId: s.itemId,
+        received: s.received,
+        reason: s.reason,
+        pendingSize: s.pendingSize || null,
+      }));
 
-      if (res.ok) {
-        toast.success(
-          `บันทึกสำเร็จ: ${student.prefix}${student.firstName} ${student.lastName}`
-        );
-        addHistory(
-          `${student.prefix}${student.firstName} ${student.lastName}`,
-          student.studentCode,
-          true
-        );
+      if (isOnline) {
+        const res = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentId: student.id, items }),
+        });
+
+        if (res.ok) {
+          const name = `${student.prefix}${student.firstName} ${student.lastName}`;
+          toast.success(`บันทึกสำเร็จ: ${name}`);
+          addHistory(name, student.studentCode, true);
+          setStudent(null);
+          setItemStates([]);
+          focusInput();
+        } else {
+          const data = await res.json();
+          toast.error(data.error);
+        }
+      } else {
+        // บันทึกแบบออฟไลน์
+        await saveOffline(student, items);
         setStudent(null);
         setItemStates([]);
         focusInput();
-      } else {
-        const data = await res.json();
-        toast.error(data.error);
       }
     } catch {
       toast.error("เกิดข้อผิดพลาด");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ─── Manual Sync ───
+  async function handleManualSync() {
+    const { synced, failed } = await syncPending();
+    if (synced > 0 && failed === 0) {
+      toast.success(`Sync สำเร็จ ${synced} รายการ`);
+    } else if (synced > 0 && failed > 0) {
+      toast.warning(`Sync สำเร็จ ${synced} รายการ, ล้มเหลว ${failed} รายการ`);
+    } else if (failed > 0) {
+      toast.error(`Sync ล้มเหลว ${failed} รายการ`);
     }
   }
 
@@ -262,7 +449,13 @@ export default function ScanPage() {
   function toggleReceived(index: number) {
     setItemStates((prev) =>
       prev.map((s, i) =>
-        i === index ? { ...s, received: !s.received, pendingSize: !s.received ? "" : s.pendingSize } : s
+        i === index
+          ? {
+              ...s,
+              received: !s.received,
+              pendingSize: !s.received ? "" : s.pendingSize,
+            }
+          : s
       )
     );
   }
@@ -271,11 +464,9 @@ export default function ScanPage() {
     return CLOTHING_KEYWORDS.some((kw) => name.includes(kw));
   }
 
-  function setPendingSize(index: number, size: string) {
+  function setPendingSizeValue(index: number, size: string) {
     setItemStates((prev) =>
-      prev.map((s, i) =>
-        i === index ? { ...s, pendingSize: size } : s
-      )
+      prev.map((s, i) => (i === index ? { ...s, pendingSize: size } : s))
     );
   }
 
@@ -287,26 +478,130 @@ export default function ScanPage() {
 
   return (
     <div className="space-y-6" onKeyDown={handleKeyDown}>
-      <div className="flex items-center justify-between">
+      {/* ─── Header + Status ─── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">สแกน Barcode - ร้านสวัสดิการ</h1>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="quick-mode"
-            checked={quickMode}
-            onCheckedChange={setQuickMode}
-          />
-          <Label htmlFor="quick-mode" className="flex items-center gap-1.5 cursor-pointer text-sm">
-            <Zap className={`w-4 h-4 ${quickMode ? "text-yellow-500" : "text-muted-foreground"}`} />
-            สแกนเร็ว
-          </Label>
+        <div className="flex items-center gap-3">
+          {/* Online/Offline Status */}
+          {isOnline ? (
+            <Badge className="bg-green-100 text-green-700 gap-1">
+              <Wifi className="w-3 h-3" />
+              ออนไลน์
+            </Badge>
+          ) : (
+            <Badge className="bg-red-100 text-red-700 gap-1">
+              <WifiOff className="w-3 h-3" />
+              ออฟไลน์
+            </Badge>
+          )}
+
+          {/* Quick Mode Toggle */}
+          <div className="flex items-center gap-2">
+            <Switch
+              id="quick-mode"
+              checked={quickMode}
+              onCheckedChange={setQuickMode}
+            />
+            <Label
+              htmlFor="quick-mode"
+              className="flex items-center gap-1.5 cursor-pointer text-sm"
+            >
+              <Zap
+                className={`w-4 h-4 ${quickMode ? "text-yellow-500" : "text-muted-foreground"}`}
+              />
+              สแกนเร็ว
+            </Label>
+          </div>
         </div>
       </div>
+
+      {/* ─── Offline Info Bar ─── */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Cache status */}
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Database className="w-3.5 h-3.5" />
+          {isCaching ? (
+            <span className="flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              กำลังโหลดข้อมูล...
+            </span>
+          ) : cacheReady ? (
+            <span>
+              แคช: {cacheCount.toLocaleString()} คน
+              {lastSynced && ` | อัปเดต: ${lastSynced}`}
+            </span>
+          ) : (
+            <span className="text-orange-600">ยังไม่มีแคช</span>
+          )}
+        </div>
+
+        {/* Refresh cache button */}
+        {isOnline && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadOfflineCache}
+            disabled={isCaching}
+            className="h-7 text-xs"
+          >
+            <RefreshCw
+              className={`w-3 h-3 mr-1 ${isCaching ? "animate-spin" : ""}`}
+            />
+            รีเฟรชแคช
+          </Button>
+        )}
+
+        {/* Pending sync count */}
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge className="bg-orange-100 text-orange-700 gap-1">
+              <CloudUpload className="w-3 h-3" />
+              รอ sync: {pendingCount} รายการ
+            </Badge>
+            {isOnline && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="h-7 text-xs"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    กำลัง sync...
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-3 h-3 mr-1" />
+                    Sync ตอนนี้
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Offline mode warning */}
+      {!isOnline && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
+          <strong>โหมดออฟไลน์:</strong> ระบบจะใช้ข้อมูลที่เก็บไว้ในเครื่อง
+          ผลการสแกนจะถูกบันทึกไว้รอ และจะ sync อัตโนมัติเมื่อกลับมาออนไลน์
+          {!cacheReady && (
+            <p className="mt-1 text-red-600 font-medium">
+              ยังไม่มีข้อมูลในแคช ไม่สามารถสแกนได้ กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อโหลดข้อมูลก่อน
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Quick Mode Info */}
       {quickMode && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-          <strong>โหมดสแกนเร็ว:</strong> สแกนแล้วบันทึก &quot;รับทั้งหมด&quot; ทันที ไม่ต้องกด Enter อีกครั้ง
-          (ถ้านักเรียนเคยสแกนแล้ว จะแสดงรายละเอียดให้แก้ไขตามปกติ)
+          <strong>โหมดสแกนเร็ว:</strong> สแกนแล้วบันทึก &quot;รับทั้งหมด&quot;
+          ทันที ไม่ต้องกด Enter อีกครั้ง (ถ้านักเรียนเคยสแกนแล้ว
+          จะแสดงรายละเอียดให้แก้ไขตามปกติ)
         </div>
       )}
 
@@ -357,18 +652,27 @@ export default function ScanPage() {
                   <CardTitle className="text-lg flex items-center gap-2">
                     ข้อมูลนักเรียน
                     <Badge>{receiptTypeLabels[student.receiptType]}</Badge>
+                    {!isOnline && (
+                      <Badge className="bg-orange-100 text-orange-700 text-xs">
+                        ออฟไลน์
+                      </Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-muted-foreground">เลขประจำตัว:</span>
+                      <span className="text-muted-foreground">
+                        เลขประจำตัว:
+                      </span>
                       <p className="font-mono text-lg font-bold">
                         {student.studentCode}
                       </p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">ชื่อ-นามสกุล:</span>
+                      <span className="text-muted-foreground">
+                        ชื่อ-นามสกุล:
+                      </span>
                       <p className="text-lg font-bold">
                         {student.prefix}
                         {student.firstName} {student.lastName}
@@ -431,7 +735,9 @@ export default function ScanPage() {
                               </Label>
                               <Select
                                 value={item.pendingSize}
-                                onValueChange={(val) => setPendingSize(index, val)}
+                                onValueChange={(val) =>
+                                  setPendingSizeValue(index, val)
+                                }
                               >
                                 <SelectTrigger className="w-32 bg-white">
                                   <SelectValue placeholder="เลือกไซส์" />
@@ -457,7 +763,11 @@ export default function ScanPage() {
                     disabled={saving}
                   >
                     <Save className="w-5 h-5 mr-2" />
-                    {saving ? "กำลังบันทึก..." : "บันทึก (กด Enter)"}
+                    {saving
+                      ? "กำลังบันทึก..."
+                      : isOnline
+                        ? "บันทึก (กด Enter)"
+                        : "บันทึกออฟไลน์ (กด Enter)"}
                   </Button>
                 </CardContent>
               </Card>
@@ -470,6 +780,11 @@ export default function ScanPage() {
                 <p className="text-sm mt-1">
                   ใช้เครื่องอ่าน Barcode หรือพิมพ์เลขประจำตัวนักเรียน
                 </p>
+                {!isOnline && cacheReady && (
+                  <p className="text-sm mt-2 text-orange-600">
+                    กำลังใช้งานแบบออฟไลน์ (แคช {cacheCount.toLocaleString()} คน)
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -495,17 +810,24 @@ export default function ScanPage() {
                     key={i}
                     className={`p-3 rounded-md border ${
                       record.success
-                        ? "border-green-200 bg-green-50"
+                        ? record.offline
+                          ? "border-orange-200 bg-orange-50"
+                          : "border-green-200 bg-green-50"
                         : "border-red-200 bg-red-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{record.name}</span>
-                      {record.success ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <XCircle className="w-4 h-4 text-red-600" />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {record.offline && (
+                          <WifiOff className="w-3 h-3 text-orange-500" />
+                        )}
+                        {record.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-600" />
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs text-muted-foreground mt-1">
                       <span>{record.code}</span>

@@ -244,33 +244,28 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
 
   registerFont(doc);
 
-  // Each A4 landscape page fits 2 receipts (left A5 + right A5)
-  // Each A5 half = different student
+  // Each A4 landscape page fits 1 student with 2 identical copies (left + right)
   const halfWidth = 148.5;
-  let slot = 0; // 0 = left half, 1 = right half
+  const dateText = formatThaiDate(dateStr);
 
   for (let i = 0; i < receipts.length; i++) {
-    // Need a new page when starting a new left half (except the first page)
-    if (slot === 0 && i > 0) {
+    if (i > 0) {
       doc.addPage();
     }
 
-    const offsetX = slot * halfWidth;
-    const dateText = formatThaiDate(dateStr);
-    drawReceipt(doc, receipts[i], offsetX, dateText);
+    // Left copy
+    drawReceipt(doc, receipts[i], 0, dateText);
 
-    // Draw a faint vertical divider after left half
-    if (slot === 0) {
-      doc.setDrawColor(180);
-      doc.setLineWidth(0.15);
-      doc.setLineDashPattern([2, 2], 0);
-      doc.line(halfWidth, 3, halfWidth, 207);
-      doc.setLineDashPattern([], 0);
-      doc.setDrawColor(0);
-    }
+    // Vertical divider
+    doc.setDrawColor(180);
+    doc.setLineWidth(0.15);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.line(halfWidth, 3, halfWidth, 207);
+    doc.setLineDashPattern([], 0);
+    doc.setDrawColor(0);
 
-    // Toggle slot: 0 -> 1 -> 0 -> 1 ...
-    slot = 1 - slot;
+    // Right copy (same student)
+    drawReceipt(doc, receipts[i], halfWidth, dateText);
   }
 
   doc.save("ใบเสร็จรับเงินชั่วคราว.pdf");

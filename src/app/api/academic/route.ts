@@ -55,6 +55,8 @@ export async function POST(req: NextRequest) {
   // Action: unpaid-list
   if (action === "unpaid-list") {
     const { search, room, level } = body;
+    const page = parseInt(body.page || "1");
+    const limit = parseInt(body.limit || "50");
 
     const whereFilters: Record<string, unknown> = {};
 
@@ -74,14 +76,22 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    const hasFilters = !!(search || room || level);
+    const combinedWhere = { ...whereFilters, ...unpaidCondition };
 
     // รัน queries ทั้งหมดพร้อมกัน — ลดเวลารอ
-    const [students, rooms, totalUnpaid] = await Promise.all([
-      // Query หลัก: นักเรียนค้างชำระ (พร้อม filters)
+    const [students, rooms, filteredCount] = await Promise.all([
+      // Query หลัก: นักเรียนค้างชำระ (พร้อม filters + pagination)
       prisma.student.findMany({
-        where: { ...whereFilters, ...unpaidCondition },
-        include: {
+        where: combinedWhere,
+        select: {
+          id: true,
+          studentCode: true,
+          prefix: true,
+          firstName: true,
+          lastName: true,
+          level: true,
+          room: true,
+          receiptType: true,
           receipts: {
             where: { paidAt: null, unpaidConfirmedAt: { not: null } },
             select: {
@@ -94,6 +104,8 @@ export async function POST(req: NextRequest) {
           },
         },
         orderBy: [{ level: "asc" }, { room: "asc" }, { studentCode: "asc" }],
+        skip: (page - 1) * limit,
+        take: limit,
       }),
       // ดึง rooms/levels สำหรับ dropdown (ไม่มี filter)
       prisma.student.findMany({
@@ -102,10 +114,8 @@ export async function POST(req: NextRequest) {
         distinct: ["level", "room"],
         orderBy: [{ level: "asc" }, { room: "asc" }],
       }),
-      // นับจำนวนทั้งหมดเฉพาะเมื่อมี filter (ถ้าไม่มี filter ใช้ students.length ได้)
-      hasFilters
-        ? prisma.student.count({ where: unpaidCondition })
-        : Promise.resolve(null),
+      // นับจำนวนทั้งหมดตาม filter
+      prisma.student.count({ where: combinedWhere }),
     ]);
 
     // Calculate total unpaid amount
@@ -116,9 +126,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       students,
-      totalUnpaid: totalUnpaid ?? students.length,
+      totalUnpaid: filteredCount,
       totalAmount,
       rooms,
+      page,
+      limit,
+      totalPages: Math.ceil(filteredCount / limit),
     });
   }
 

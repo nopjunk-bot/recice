@@ -52,6 +52,8 @@ model Student {
 
   @@index([level, room])
   @@index([importBatchId])
+  @@index([firstName, lastName])
+  @@index([receiptType])
 }
 
 model ImportBatch {
@@ -87,6 +89,9 @@ model Receipt {
   @@index([paidAt])
   @@index([unpaidConfirmedAt])
   @@index([generatedById])
+  @@index([receiptNumber])
+  @@index([receiptType])
+  @@index([paidAt, unpaidConfirmedAt])
 }
 
 model WelfareItem {
@@ -113,5 +118,6 @@ model WelfareDistribution {
   @@index([studentId])
   @@index([itemId])
   @@index([received])
+  @@index([received, itemId])
   @@unique([studentId, itemId])
 }

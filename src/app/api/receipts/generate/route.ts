@@ -22,11 +22,22 @@ export async function POST(req: NextRequest) {
     const students = await prisma.student.findMany({
       where: { id: { in: studentIds } },
       orderBy: { studentCode: "asc" },
+      select: {
+        id: true,
+        studentCode: true,
+        prefix: true,
+        firstName: true,
+        lastName: true,
+        level: true,
+        room: true,
+        receiptType: true,
+      },
     });
 
     // Generate receipt numbers and save
     const lastReceipt = await prisma.receipt.findFirst({
       orderBy: { receiptNumber: "desc" },
+      select: { receiptNumber: true },
     });
 
     let counter = lastReceipt
