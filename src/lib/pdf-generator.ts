@@ -246,23 +246,35 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
 
   // Each A4 landscape page fits 1 student with 2 identical copies (left + right)
   const halfWidth = 148.5;
-  const dateText = formatThaiDate(dateStr);
 
   for (let i = 0; i < receipts.length; i++) {
     if (i > 0) {
       doc.addPage();
     }
 
+    // กำหนดวันที่ตามระดับชั้น: ม.1 = 4 เม.ย. 2569, ม.4 = 5 เม.ย. 2569
+    const type = receipts[i].student.receiptType;
+    const fixedDate = type === "M1" ? "2026-04-04" : "2026-04-05";
+    const dateText = formatThaiDate(fixedDate);
+
     // Left copy
     drawReceipt(doc, receipts[i], 0, dateText);
 
-    // Vertical divider
-    doc.setDrawColor(180);
-    doc.setLineWidth(0.15);
-    doc.setLineDashPattern([2, 2], 0);
-    doc.line(halfWidth, 3, halfWidth, 207);
+    // ========== รอยปะผ่าครึ่งกลางหน้า (perforation line) ==========
+    // สัญลักษณ์กรรไกร ✂ ด้านบน
+    doc.setFont("THSarabunNew", "normal");
+    doc.setFontSize(14);
+    doc.setTextColor(120, 120, 120);
+    doc.text("\u2702", halfWidth, 5, { align: "center" });
+
+    // เส้นปะผ่า (perforation dots)
+    doc.setDrawColor(120, 120, 120);
+    doc.setLineWidth(0.1);
+    doc.setLineDashPattern([1, 1.5], 0);
+    doc.line(halfWidth, 7, halfWidth, 207);
     doc.setLineDashPattern([], 0);
     doc.setDrawColor(0);
+    doc.setTextColor(0, 0, 0);
 
     // Right copy (same student)
     drawReceipt(doc, receipts[i], halfWidth, dateText);
