@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { format } from "date-fns";
+import { th } from "date-fns/locale";
+import { CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { FilePlus2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { generateReceiptPDF } from "@/lib/pdf-generator";
@@ -29,6 +38,8 @@ const initialForm = {
 
 export default function CreateReceiptPage() {
   const [form, setForm] = useState(initialForm);
+  const [receiptDate, setReceiptDate] = useState<Date>(new Date());
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [looking, setLooking] = useState(false);
   const [foundStudent, setFoundStudent] = useState(false);
@@ -105,13 +116,14 @@ export default function CreateReceiptPage() {
       }
 
       // Generate and download PDF
-      const today = new Date().toISOString().split("T")[0];
-      generateReceiptPDF([data.receipt], today);
+      const dateStr = format(receiptDate, "yyyy-MM-dd");
+      generateReceiptPDF([data.receipt], dateStr);
 
       toast.success(`สร้างใบเสร็จสำเร็จ: ${data.receipt.receiptNumber}`);
 
       // Reset form
       setForm(initialForm);
+      setReceiptDate(new Date());
       setFoundStudent(false);
     } catch {
       toast.error("เกิดข้อผิดพลาดในการสร้างใบเสร็จ");
@@ -122,7 +134,38 @@ export default function CreateReceiptPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">สร้างใบเสร็จชั่วคราว</h1>
+      <h1 className="text-2xl font-bold">พิมพ์ใบเสร็จรับเงินชั่วคราว</h1>
+
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium whitespace-nowrap">
+          วันที่ในใบเสร็จ
+        </label>
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-64 justify-start text-left font-normal"
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {format(receiptDate, "d MMMM yyyy", { locale: th })}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={receiptDate}
+              onSelect={(date) => {
+                if (date) {
+                  setReceiptDate(date);
+                  setCalendarOpen(false);
+                }
+              }}
+              locale={th}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
 
       <Card>
         <CardHeader>
