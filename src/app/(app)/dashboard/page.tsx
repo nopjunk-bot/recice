@@ -10,11 +10,11 @@ const getDashboardStats = unstable_cache(
       await Promise.all([
         prisma.student.count(),
         prisma.receipt.count(),
-        prisma.welfareDistribution.count({
-          where: { received: true },
+        prisma.student.count({
+          where: { distributions: { some: { received: true } } },
         }),
-        prisma.welfareDistribution.count({
-          where: { received: false },
+        prisma.student.count({
+          where: { distributions: { some: { received: false } } },
         }),
       ]);
     return { totalStudents, totalReceipts, totalScanned, notReceived };
