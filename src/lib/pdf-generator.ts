@@ -59,12 +59,14 @@ function drawReceipt(doc: jsPDF, receipt: ReceiptData, offsetX: number, dateText
     width: 1.5,
     height: 35,
     displayValue: true,
-    fontSize: 10,
+    fontSize: 14,
+    fontOptions: "bold",
     margin: 2,
     font: "monospace",
+    textMargin: 1,
   });
   const barcodeImg = canvas.toDataURL("image/png");
-  doc.addImage(barcodeImg, "PNG", offsetX + 5, 5, 42, 17);
+  doc.addImage(barcodeImg, "PNG", offsetX + 5, 5, 42, 18);
 
   // ========== Receipt Number (top-right) ==========
   doc.setFontSize(16);
@@ -257,8 +259,8 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
     const fixedDate = type === "M1" ? "2026-04-04" : "2026-04-05";
     const dateText = formatThaiDate(fixedDate);
 
-    // Left copy (สำหรับเจ้าหน้าการเงิน)
-    drawReceipt(doc, receipts[i], 0, dateText, "(สำหรับเจ้าหน้าการเงิน)");
+    // Left copy (สำหรับเจ้าหน้าที่การเงิน)
+    drawReceipt(doc, receipts[i], 0, dateText, "(สำหรับเจ้าหน้าที่การเงิน)");
 
     // ========== รอยปะผ่าครึ่งกลางหน้า (perforation line) ==========
     // สัญลักษณ์กรรไกร ✂ ด้านบน
