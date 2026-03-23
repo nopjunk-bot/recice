@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
@@ -8,6 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -21,9 +30,31 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { FilePlus2, Search, Loader2 } from "lucide-react";
+import { FilePlus2, Search, Loader2, FileDown, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { generateReceiptPDF } from "@/lib/pdf-generator";
+import { generateReceiptPDF, generateUnderpaidReportPDF } from "@/lib/pdf-generator";
+
+type UnderpaidRecord = {
+  id: string;
+  student: {
+    studentCode: string;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    level: string;
+    room: string;
+  };
+  receiptType: string;
+  paidAmount: number;
+  expectedAmount: number;
+  difference: number;
+};
+
+const receiptTypeLabels: Record<string, string> = {
+  M1: "ม.1",
+  M4_GENERAL: "ม.4 ทั่วไป",
+  M4_LANG: "ม.4 ภาษา",
+};
 
 const initialForm = {
   studentCode: "",
@@ -43,6 +74,19 @@ export default function CreateReceiptPage() {
   const [loading, setLoading] = useState(false);
   const [looking, setLooking] = useState(false);
   const [foundStudent, setFoundStudent] = useState(false);
+  const [underpaid, setUnderpaid] = useState<UnderpaidRecord[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+
+  async function loadUnderpaid() {
+    setLoadingReport(true);
+    try {
+      const res = await fetch("/api/receipts/underpaid");
+      if (res.ok) setUnderpaid(await res.json());
+    } catch { /* ignore */ }
+    finally { setLoadingReport(false); }
+  }
+
+  useEffect(() => { loadUnderpaid(); }, []);
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -121,10 +165,11 @@ export default function CreateReceiptPage() {
 
       toast.success(`สร้างใบเสร็จสำเร็จ: ${data.receipt.receiptNumber}`);
 
-      // Reset form
+      // Reset form + reload report
       setForm(initialForm);
       setReceiptDate(new Date());
       setFoundStudent(false);
+      loadUnderpaid();
     } catch {
       toast.error("เกิดข้อผิดพลาดในการสร้างใบเสร็จ");
     } finally {
@@ -300,6 +345,79 @@ export default function CreateReceiptPage() {
             )}
             {loading ? "กำลังสร้างใบเสร็จ..." : "สร้างใบเสร็จและดาวน์โหลด PDF"}
           </Button>
+        </CardContent>
+      </Card>
+      {/* ─── รายงานชำระไม่ครบ ─── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-500" />
+              นักเรียนที่ชำระเงินไม่ครบจำนวน ({underpaid.length} คน)
+            </CardTitle>
+            {underpaid.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => generateUnderpaidReportPDF(underpaid)}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                ดาวน์โหลด PDF
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loadingReport ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              กำลังโหลด...
+            </div>
+          ) : underpaid.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground">
+              ไม่มีนักเรียนที่ชำระไม่ครบ
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>เลขประจำตัว</TableHead>
+                  <TableHead>ชื่อ-สกุล</TableHead>
+                  <TableHead>ชั้น/ห้อง</TableHead>
+                  <TableHead>ประเภท</TableHead>
+                  <TableHead className="text-right">ยอดชำระ</TableHead>
+                  <TableHead className="text-right">ยอดเต็ม</TableHead>
+                  <TableHead className="text-right">ส่วนต่าง</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {underpaid.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono">{r.student.studentCode}</TableCell>
+                    <TableCell>
+                      {r.student.prefix}{r.student.firstName} {r.student.lastName}
+                    </TableCell>
+                    <TableCell>{r.student.level}/{r.student.room}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {receiptTypeLabels[r.receiptType] || r.receiptType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{r.paidAmount.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{r.expectedAmount.toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-bold text-red-600">
+                      -{r.difference.toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-gray-50 font-bold">
+                  <TableCell colSpan={6} className="text-right">รวมส่วนต่างทั้งหมด</TableCell>
+                  <TableCell className="text-right text-red-600">
+                    -{underpaid.reduce((sum, r) => sum + r.difference, 0).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

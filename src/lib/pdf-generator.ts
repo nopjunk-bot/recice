@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import JsBarcode from "jsbarcode";
 import THBText from "thai-baht-text";
 import { THSarabunNew } from "./thsarabun-font";
@@ -283,4 +284,80 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
   }
 
   doc.save("ใบเสร็จรับเงินชั่วคราว.pdf");
+}
+
+// ─── รายงานนักเรียนชำระไม่ครบ ───
+type UnderpaidRecord = {
+  student: {
+    studentCode: string;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    level: string;
+    room: string;
+  };
+  receiptType: string;
+  paidAmount: number;
+  expectedAmount: number;
+  difference: number;
+};
+
+const receiptTypeLabels: Record<string, string> = {
+  M1: "ม.1",
+  M4_GENERAL: "ม.4 ทั่วไป",
+  M4_LANG: "ม.4 ภาษา",
+};
+
+export function generateUnderpaidReportPDF(records: UnderpaidRecord[]) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  doc.addFileToVFS("THSarabunNew.ttf", THSarabunNew);
+  doc.addFont("THSarabunNew.ttf", "THSarabunNew", "normal");
+  doc.setFont("THSarabunNew");
+
+  // หัวรายงาน
+  doc.setFontSize(18);
+  doc.text("รายงานนักเรียนที่ชำระเงินไม่ครบจำนวน", 105, 15, { align: "center" });
+  doc.setFontSize(12);
+  doc.text(`จำนวน ${records.length} คน`, 105, 22, { align: "center" });
+
+  const totalDiff = records.reduce((sum, r) => sum + r.difference, 0);
+
+  // ตาราง
+  autoTable(doc, {
+    startY: 28,
+    head: [["ลำดับ", "เลขประจำตัว", "ชื่อ-สกุล", "ชั้น/ห้อง", "ประเภท", "ยอดชำระ", "ยอดเต็ม", "ส่วนต่าง"]],
+    body: records.map((r, i) => [
+      i + 1,
+      r.student.studentCode,
+      `${r.student.prefix}${r.student.firstName} ${r.student.lastName}`,
+      `${r.student.level}/${r.student.room}`,
+      receiptTypeLabels[r.receiptType] || r.receiptType,
+      r.paidAmount.toLocaleString(),
+      r.expectedAmount.toLocaleString(),
+      r.difference.toLocaleString(),
+    ]),
+    foot: [["", "", "", "", "", "", "รวมส่วนต่าง", totalDiff.toLocaleString()]],
+    styles: {
+      font: "THSarabunNew",
+      fontSize: 13,
+    },
+    headStyles: {
+      fillColor: [41, 128, 185],
+      fontSize: 13,
+    },
+    footStyles: {
+      fillColor: [245, 245, 245],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      fontSize: 14,
+    },
+    columnStyles: {
+      0: { halign: "center", cellWidth: 12 },
+      5: { halign: "right" },
+      6: { halign: "right" },
+      7: { halign: "right" },
+    },
+  });
+
+  doc.save("รายงานชำระไม่ครบ.pdf");
 }

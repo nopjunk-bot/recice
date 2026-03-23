@@ -33,7 +33,15 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/select-department");
+      // redirect ตาม role ทันที — ไม่ต้องผ่าน select-department ถ้าไม่ใช่ ADMIN
+      const role = data.user?.role;
+      if (role === "ACADEMIC") {
+        router.push("/academic");
+      } else if (role === "ADMIN") {
+        router.push("/select-department");
+      } else {
+        router.push("/dashboard");
+      }
       router.refresh();
     } catch {
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
