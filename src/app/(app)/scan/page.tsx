@@ -91,7 +91,6 @@ export default function ScanPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [itemStates, setItemStates] = useState<ItemState[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<ScanRecord[]>([]);
   const [quickMode, setQuickMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -362,48 +361,74 @@ export default function ScanPage() {
     }
   }
 
-  // ─── SAVE ───
+  // ─── SAVE (Optimistic UI — เคลียร์หน้าจอทันที ไม่ต้องรอ API) ───
   async function handleSave() {
     if (!student) return;
-    setSaving(true);
 
-    try {
-      const items = itemStates.map((s) => ({
-        itemId: s.itemId,
-        received: s.received,
-        reason: s.reason,
-        pendingSize: s.pendingSize || null,
-      }));
+    const items = itemStates.map((s) => ({
+      itemId: s.itemId,
+      received: s.received,
+      reason: s.reason,
+      pendingSize: s.pendingSize || null,
+    }));
 
-      if (isOnline) {
-        const res = await fetch("/api/scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId: student.id, items }),
-        });
+    const savedStudent = student;
+    const studentName = `${savedStudent.prefix}${savedStudent.firstName} ${savedStudent.lastName}`;
 
+    // เคลียร์หน้าจอทันที → พร้อมสแกนคนถัดไป
+    setStudent(null);
+    setItemStates([]);
+    addHistory(studentName, savedStudent.studentCode, true, !isOnline);
+    focusInput();
+
+    if (isOnline) {
+      // ส่ง API ใน background — ไม่ block UI
+      fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId: savedStudent.id, items }),
+      }).then((res) => {
         if (res.ok) {
-          const name = `${student.prefix}${student.firstName} ${student.lastName}`;
-          toast.success(`บันทึกสำเร็จ: ${name}`);
-          addHistory(name, student.studentCode, true);
-          setStudent(null);
-          setItemStates([]);
-          focusInput();
+          toast.success(`บันทึกสำเร็จ: ${studentName}`);
         } else {
-          const data = await res.json();
-          toast.error(data.error);
+          res.json().then((data) => {
+            toast.error(`บันทึกไม่สำเร็จ: ${studentName} — ${data.error || "ลองอีกครั้ง"}`);
+            // กลับไปแก้ไข
+            setStudent(savedStudent);
+            setItemStates(
+              items.map((it) => ({
+                itemId: it.itemId,
+                name: savedStudent.distributions.find((d) => d.itemId === it.itemId)?.item.name || "",
+                received: it.received,
+                reason: it.reason,
+                pendingSize: it.pendingSize || "",
+              }))
+            );
+          }).catch(() => {
+            toast.error(`บันทึกไม่สำเร็จ: ${studentName}`);
+          });
         }
-      } else {
-        // บันทึกแบบออฟไลน์
-        await saveOffline(student, items);
-        setStudent(null);
-        setItemStates([]);
-        focusInput();
+      }).catch(() => {
+        toast.error(`เชื่อมต่อไม่ได้ — ${studentName}`);
+        setStudent(savedStudent);
+        setItemStates(
+          items.map((it) => ({
+            itemId: it.itemId,
+            name: savedStudent.distributions.find((d) => d.itemId === it.itemId)?.item.name || "",
+            received: it.received,
+            reason: it.reason,
+            pendingSize: it.pendingSize || "",
+          }))
+        );
+      });
+    } else {
+      // บันทึกแบบออฟไลน์
+      try {
+        await saveOffline(savedStudent, items);
+      } catch {
+        toast.error("บันทึกออฟไลน์ไม่สำเร็จ");
+        setStudent(savedStudent);
       }
-    } catch {
-      toast.error("เกิดข้อผิดพลาด");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -624,7 +649,7 @@ export default function ScanPage() {
             <Button
               onClick={student ? handleSave : handleScan}
               className="h-12 px-6"
-              disabled={loading || saving}
+              disabled={loading}
             >
               {student ? (
                 <>
@@ -760,14 +785,11 @@ export default function ScanPage() {
                   <Button
                     onClick={handleSave}
                     className="w-full mt-6 h-12 text-lg"
-                    disabled={saving}
                   >
                     <Save className="w-5 h-5 mr-2" />
-                    {saving
-                      ? "กำลังบันทึก..."
-                      : isOnline
-                        ? "บันทึก (กด Enter)"
-                        : "บันทึกออฟไลน์ (กด Enter)"}
+                    {isOnline
+                      ? "บันทึก (กด Enter)"
+                      : "บันทึกออฟไลน์ (กด Enter)"}
                   </Button>
                 </CardContent>
               </Card>

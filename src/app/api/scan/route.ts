@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
     }
 
     // items: [{ itemId: string, received: boolean, reason?: string, pendingSize?: string }]
-    // ใช้ $transaction รวม upserts ทั้งหมดเป็น batch เดียว
-    await prisma.$transaction(
-      items.map((item: { itemId: string; received: boolean; reason?: string; pendingSize?: string }) =>
+    // ใช้ $transaction รวม upserts + auto-mark paid เป็น batch เดียว (ลด round-trip)
+    await prisma.$transaction([
+      ...items.map((item: { itemId: string; received: boolean; reason?: string; pendingSize?: string }) =>
         prisma.welfareDistribution.upsert({
           where: {
             studentId_itemId: {
@@ -118,14 +118,13 @@ export async function POST(req: NextRequest) {
             scannedById: user.id,
           },
         })
-      )
-    );
-
-    // Auto-mark as paid: ถ้านักเรียนมารับของที่ร้านสวัสดิการ แปลว่าชำระเงินแล้ว
-    await prisma.receipt.updateMany({
-      where: { studentId, paidAt: null },
-      data: { paidAt: new Date() },
-    });
+      ),
+      // Auto-mark as paid: ถ้านักเรียนมารับของที่ร้านสวัสดิการ แปลว่าชำระเงินแล้ว
+      prisma.receipt.updateMany({
+        where: { studentId, paidAt: null },
+        data: { paidAt: new Date() },
+      }),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
