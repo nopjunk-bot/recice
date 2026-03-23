@@ -14,5 +14,9 @@ export async function GET() {
     orderBy: { room: "asc" },
   });
 
-  return NextResponse.json(rooms.map((r) => r.room));
+  return NextResponse.json(rooms.map((r) => r.room), {
+    headers: {
+      "Cache-Control": "private, max-age=300, stale-while-revalidate=60",
+    },
+  });
 }

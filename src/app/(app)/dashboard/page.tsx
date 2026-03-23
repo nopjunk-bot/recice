@@ -1,24 +1,32 @@
-import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, FileText, ScanBarcode, AlertTriangle } from "lucide-react";
+import { unstable_cache } from "next/cache";
+
+// Cache ผลนับสถิติไว้ 60 วินาที — ไม่ต้อง query ฐานข้อมูลทุกครั้งที่เปิดหน้า
+const getDashboardStats = unstable_cache(
+  async () => {
+    const [totalStudents, totalReceipts, totalScanned, notReceived] =
+      await Promise.all([
+        prisma.student.count(),
+        prisma.receipt.count(),
+        prisma.welfareDistribution.count({
+          where: { received: true },
+        }),
+        prisma.welfareDistribution.count({
+          where: { received: false },
+        }),
+      ]);
+    return { totalStudents, totalReceipts, totalScanned, notReceived };
+  },
+  ["dashboard-stats"],
+  { revalidate: 60 } // รีเฟรชข้อมูลใหม่ทุก 60 วินาที
+);
 
 export default async function DashboardPage() {
-  const user = await getSession();
-  if (!user) redirect("/login");
-
-  const [totalStudents, totalReceipts, totalScanned, notReceived] =
-    await Promise.all([
-      prisma.student.count(),
-      prisma.receipt.count(),
-      prisma.welfareDistribution.count({
-        where: { received: true },
-      }),
-      prisma.welfareDistribution.count({
-        where: { received: false },
-      }),
-    ]);
+  // session ถูกตรวจแล้วที่ layout — ไม่ต้องตรวจซ้ำ
+  const { totalStudents, totalReceipts, totalScanned, notReceived } =
+    await getDashboardStats();
 
   const stats = [
     {

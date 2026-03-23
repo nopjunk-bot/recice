@@ -43,5 +43,9 @@ export async function GET() {
     students,
     welfareItems,
     syncedAt: new Date().toISOString(),
+  }, {
+    headers: {
+      "Cache-Control": "private, max-age=120, stale-while-revalidate=60",
+    },
   });
 }

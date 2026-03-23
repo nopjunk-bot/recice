@@ -44,7 +44,7 @@ function formatThaiDate(dateStr: string): string {
 }
 
 // Draw a single receipt in A5 half (A4 Landscape = 297x210, each half = 148.5x210)
-function drawReceipt(doc: jsPDF, receipt: ReceiptData, offsetX: number, dateText: string) {
+function drawReceipt(doc: jsPDF, receipt: ReceiptData, offsetX: number, dateText: string, copyLabel: string = "(สำหรับนักเรียน)") {
   const W = 148.5; // half width
   const cx = offsetX + W / 2;
   const margin = 12;
@@ -77,9 +77,9 @@ function drawReceipt(doc: jsPDF, receipt: ReceiptData, offsetX: number, dateText
   doc.setLineWidth(0.3);
   doc.line(numEndX - numWidth - 1, 14, numEndX, 14);
 
-  // "(สำหรับนักเรียน)"
+  // ป้ายกำกับสำเนา (ซ้าย=เจ้าหน้าที่ / ขวา=นักเรียน)
   doc.setFontSize(14);
-  doc.text("(สำหรับนักเรียน)", offsetX + W - margin, 20, {
+  doc.text(copyLabel, offsetX + W - margin, 20, {
     align: "right",
   });
 
@@ -257,8 +257,8 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
     const fixedDate = type === "M1" ? "2026-04-04" : "2026-04-05";
     const dateText = formatThaiDate(fixedDate);
 
-    // Left copy
-    drawReceipt(doc, receipts[i], 0, dateText);
+    // Left copy (สำหรับเจ้าหน้าการเงิน)
+    drawReceipt(doc, receipts[i], 0, dateText, "(สำหรับเจ้าหน้าการเงิน)");
 
     // ========== รอยปะผ่าครึ่งกลางหน้า (perforation line) ==========
     // สัญลักษณ์กรรไกร ✂ ด้านบน
