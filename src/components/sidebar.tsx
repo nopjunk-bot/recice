@@ -16,8 +16,10 @@ import {
   GitCompareArrows,
   FileSearch,
   FilePlus2,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Department } from "@/lib/session";
 
 const navItems = [
   { href: "/dashboard", label: "หน้าหลัก", icon: LayoutDashboard },
@@ -33,32 +35,46 @@ const navItems = [
   { href: "/document-requests", label: "คำขอเอกสาร", icon: FileSearch },
 ];
 
-export default function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
+// เมนูที่แต่ละฝ่ายเข้าถึงได้
+const departmentMenus: Record<Department, string[]> = {
+  finance: ["/dashboard", "/import", "/receipts", "/create-receipt", "/payment-scan", "/document-requests"],
+  welfare: ["/dashboard", "/scan", "/reports"],
+  admin: navItems.map((item) => item.href), // ทุกเมนู
+  academic: ["/dashboard"], // ไม่ควรเห็น sidebar เลย แต่ใส่ไว้กันกรณีพิเศษ
+};
+
+const departmentLabels: Record<Department, string> = {
+  finance: "ฝ่ายการเงิน",
+  welfare: "ฝ่ายร้านสวัสดิการ",
+  admin: "ผู้ดูแลระบบ",
+  academic: "ฝ่ายวิชาการ",
+};
+
+export default function Sidebar({
+  userName,
+  userRole,
+  department,
+}: {
+  userName: string;
+  userRole: string;
+  department: Department;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const roleLabel =
-    userRole === "ADMIN"
-      ? "ผู้ดูแลระบบ"
-      : userRole === "DATA_ENTRY"
-      ? "พนักงานนำเข้าข้อมูล"
-      : "พนักงานร้านสวัสดิการ";
-
-  // Filter nav items by role
-  const filteredItems = navItems.filter((item) => {
-    if (userRole === "ADMIN") return true;
-    if (userRole === "DATA_ENTRY") {
-      return ["/dashboard", "/import", "/receipts", "/create-receipt"].includes(item.href);
-    }
-    if (userRole === "WELFARE_STAFF") {
-      return ["/dashboard", "/scan", "/reports"].includes(item.href);
-    }
-    return false;
-  });
+  const allowedMenus = departmentMenus[department] || [];
+  const filteredItems = navItems.filter((item) => allowedMenus.includes(item.href));
+  const isAdmin = userRole === "ADMIN";
 
   async function handleLogout() {
     await fetch("/api/auth", { method: "DELETE" });
     router.push("/login");
+    router.refresh();
+  }
+
+  async function handleSwitchDepartment() {
+    await fetch("/api/select-department", { method: "DELETE" });
+    router.push("/select-department");
     router.refresh();
   }
 
@@ -67,7 +83,7 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
       <div className="p-4 border-b">
         <h1 className="font-bold text-lg">ระบบร้านสวัสดิการ</h1>
         <p className="text-xs text-muted-foreground mt-1">{userName}</p>
-        <p className="text-xs text-blue-600">{roleLabel}</p>
+        <p className="text-xs text-blue-600">{departmentLabels[department]}</p>
       </div>
       <nav className="flex-1 p-2">
         {filteredItems.map((item) => {
@@ -90,7 +106,17 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
           );
         })}
       </nav>
-      <div className="p-2 border-t">
+      <div className="p-2 border-t space-y-1">
+        {isAdmin && (
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-gray-600"
+            onClick={handleSwitchDepartment}
+          >
+            <ArrowLeftRight className="w-5 h-5 mr-3" />
+            เปลี่ยนฝ่าย
+          </Button>
+        )}
         <Button
           variant="ghost"
           className="w-full justify-start text-gray-600"

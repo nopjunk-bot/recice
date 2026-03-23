@@ -1,10 +1,13 @@
 import { cookies } from "next/headers";
 
+export type Department = "finance" | "welfare" | "academic" | "admin";
+
 export type SessionUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "DATA_ENTRY" | "WELFARE_STAFF";
+  role: "ADMIN" | "FINANCE" | "WELFARE_STAFF" | "ACADEMIC";
+  department?: Department;
 };
 
 export async function getSession(): Promise<SessionUser | null> {

@@ -9,8 +9,20 @@ const ACADEMIC_PASSWORD = process.env.ACADEMIC_PASSWORD || "academic123";
 const COOKIE_NAME = "academic_session";
 
 function isAuthenticated(req: NextRequest): boolean {
+  // ตรวจ academic_session cookie (login แบบเดิม)
   const cookie = req.cookies.get(COOKIE_NAME);
-  return cookie?.value === "authenticated";
+  if (cookie?.value === "authenticated") return true;
+
+  // ตรวจ main session cookie (login ผ่านระบบหลัก — ACADEMIC หรือ ADMIN)
+  const mainSession = req.cookies.get("session");
+  if (mainSession) {
+    try {
+      const data = JSON.parse(Buffer.from(mainSession.value, "base64").toString());
+      if (data.role === "ACADEMIC" || data.role === "ADMIN") return true;
+    } catch { /* invalid session */ }
+  }
+
+  return false;
 }
 
 // POST: login or get unpaid students

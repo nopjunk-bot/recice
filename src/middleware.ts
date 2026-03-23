@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const publicPaths = ["/login", "/api/auth", "/academic", "/api/academic", "/document-request", "/api/document-request"];
+const publicPaths = [
+  "/login",
+  "/api/auth",
+  "/academic",
+  "/api/academic",
+  "/document-request",
+  "/api/document-request",
+  "/select-department",
+  "/api/select-department",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -19,6 +28,18 @@ export function middleware(request: NextRequest) {
   // Check session cookie
   const session = request.cookies.get("session");
   if (!session) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // ADMIN ต้องเลือกฝ่ายก่อนเข้าใช้งาน
+  try {
+    const sessionData = JSON.parse(
+      Buffer.from(session.value, "base64").toString()
+    );
+    if (sessionData.role === "ADMIN" && !sessionData.department) {
+      return NextResponse.redirect(new URL("/select-department", request.url));
+    }
+  } catch {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

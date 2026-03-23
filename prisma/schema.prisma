@@ -9,8 +9,9 @@ datasource db {
 
 enum Role {
   ADMIN
-  DATA_ENTRY
+  FINANCE
   WELFARE_STAFF
+  ACADEMIC
 }
 
 enum ReceiptType {
@@ -30,7 +31,7 @@ model User {
   name      String
   email     String   @unique
   password  String
-  role      Role     @default(DATA_ENTRY)
+  role      Role     @default(FINANCE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

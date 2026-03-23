@@ -42,14 +42,16 @@ type Staff = {
 
 const roleLabels: Record<string, string> = {
   ADMIN: "ผู้ดูแลระบบ",
-  DATA_ENTRY: "พนักงานนำเข้าข้อมูล",
+  FINANCE: "ฝ่ายการเงิน",
   WELFARE_STAFF: "พนักงานร้านสวัสดิการ",
+  ACADEMIC: "ฝ่ายวิชาการ",
 };
 
 const roleColors: Record<string, string> = {
   ADMIN: "bg-purple-100 text-purple-700",
-  DATA_ENTRY: "bg-blue-100 text-blue-700",
+  FINANCE: "bg-blue-100 text-blue-700",
   WELFARE_STAFF: "bg-green-100 text-green-700",
+  ACADEMIC: "bg-orange-100 text-orange-700",
 };
 
 export default function StaffClient({
@@ -210,12 +212,11 @@ export default function StaffClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ADMIN">ผู้ดูแลระบบ</SelectItem>
-                    <SelectItem value="DATA_ENTRY">
-                      พนักงานนำเข้าข้อมูล
-                    </SelectItem>
+                    <SelectItem value="FINANCE">ฝ่ายการเงิน</SelectItem>
                     <SelectItem value="WELFARE_STAFF">
                       พนักงานร้านสวัสดิการ
                     </SelectItem>
+                    <SelectItem value="ACADEMIC">ฝ่ายวิชาการ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -330,12 +331,11 @@ export default function StaffClient({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ADMIN">ผู้ดูแลระบบ</SelectItem>
-                  <SelectItem value="DATA_ENTRY">
-                    พนักงานนำเข้าข้อมูล
-                  </SelectItem>
+                  <SelectItem value="FINANCE">ฝ่ายการเงิน</SelectItem>
                   <SelectItem value="WELFARE_STAFF">
                     พนักงานร้านสวัสดิการ
                   </SelectItem>
+                  <SelectItem value="ACADEMIC">ฝ่ายวิชาการ</SelectItem>
                 </SelectContent>
               </Select>
             </div>

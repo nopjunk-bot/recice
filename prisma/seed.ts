@@ -31,10 +31,10 @@ async function main() {
   await prisma.user.createMany({
     data: [
       {
-        name: "พนักงานนำเข้าข้อมูล",
+        name: "พนักงานการเงิน",
         email: "data@test.com",
         password: hashedPassword,
-        role: "DATA_ENTRY",
+        role: "FINANCE",
       },
       {
         name: "พนักงานร้านสวัสดิการ",
@@ -46,7 +46,7 @@ async function main() {
         name: "ฝ่ายวิชาการ",
         email: "academic@test.com",
         password: hashedPassword,
-        role: "ADMIN",
+        role: "ACADEMIC",
       },
     ],
   });

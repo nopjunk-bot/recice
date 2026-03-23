@@ -5,7 +5,7 @@ import { receiptConfigs, ReceiptTypeKey } from "@/lib/receipt-config";
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
-  if (!user || !["ADMIN", "DATA_ENTRY"].includes(user.role)) {
+  if (!user || !["ADMIN", "FINANCE"].includes(user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

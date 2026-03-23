@@ -86,6 +86,23 @@ export default function AcademicPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  // ตรวจสอบว่ามี main session (ACADEMIC/ADMIN) อยู่แล้วหรือไม่ → ข้าม login
+  useEffect(() => {
+    async function checkMainSession() {
+      try {
+        const res = await fetch("/api/academic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "unpaid-list", page: 1, limit: 1 }),
+        });
+        if (res.ok) {
+          setIsLoggedIn(true);
+        }
+      } catch { /* not authenticated */ }
+    }
+    if (!isLoggedIn) checkMainSession();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Login handler
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();

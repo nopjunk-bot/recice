@@ -33,7 +33,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/select-department");
       router.refresh();
     } catch {
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
