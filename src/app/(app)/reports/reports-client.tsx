@@ -59,28 +59,18 @@ type SizeStudent = {
 
 type SizeSummary = Record<string, Record<string, { count: number; students: SizeStudent[] }>>;
 
-type ReceivedItem = {
+type ReceivedStudent = {
   id: string;
-  scannedAt: string;
-  student: {
-    studentCode: string;
-    prefix: string;
-    firstName: string;
-    lastName: string;
-    level: string;
-    room: string;
-  };
-  item: {
-    id: string;
-    name: string;
-  };
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
 };
 
-type FilterItem = { id: string; name: string };
-
 type ReceivedResponse = {
-  data: ReceivedItem[];
-  items: FilterItem[];
+  data: ReceivedStudent[];
   pagination: {
     page: number;
     limit: number;
@@ -104,12 +94,10 @@ export default function ReportsClient({
   });
 
   // State สำหรับ tab "รับสินค้าแล้ว"
-  const [received, setReceived] = useState<ReceivedItem[]>([]);
+  const [received, setReceived] = useState<ReceivedStudent[]>([]);
   const [receivedPagination, setReceivedPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [receivedSearch, setReceivedSearch] = useState("");
   const [receivedLevel, setReceivedLevel] = useState("");
-  const [receivedItemId, setReceivedItemId] = useState("");
-  const [receivedFilterItems, setReceivedFilterItems] = useState<FilterItem[]>([]);
   const [receivedLoading, setReceivedLoading] = useState(false);
 
   useEffect(() => {
@@ -125,21 +113,18 @@ export default function ReportsClient({
     else if (activeTab === "size-summary") loadSizeSummary();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadReceived(page: number, search?: string, level?: string, itemId?: string) {
+  async function loadReceived(page: number, search?: string, level?: string) {
     setReceivedLoading(true);
     const s = search ?? receivedSearch;
     const l = level ?? receivedLevel;
-    const iId = itemId ?? receivedItemId;
     const params = new URLSearchParams({ type: "received", page: String(page) });
     if (s) params.set("search", s);
     if (l) params.set("level", l);
-    if (iId) params.set("itemId", iId);
 
     const res = await fetch(`/api/reports?${params}`);
     const json: ReceivedResponse = await res.json();
     setReceived(json.data);
     setReceivedPagination({ page: json.pagination.page, total: json.pagination.total, totalPages: json.pagination.totalPages });
-    if (json.items.length > 0) setReceivedFilterItems(json.items);
     setReceivedLoading(false);
   }
 
@@ -248,7 +233,7 @@ export default function ReportsClient({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                นักเรียนที่รับสินค้าแล้ว ({receivedPagination.total} รายการ)
+                รายชื่อนักเรียนที่รับสินค้าแล้ว ({receivedPagination.total} คน)
               </CardTitle>
               {/* ช่องค้นหา + ตัวกรอง */}
               <div className="flex flex-col sm:flex-row gap-3 mt-3">
@@ -262,7 +247,7 @@ export default function ReportsClient({
                       setReceivedSearch(e.target.value);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") loadReceived(1, receivedSearch, receivedLevel, receivedItemId);
+                      if (e.key === "Enter") loadReceived(1, receivedSearch, receivedLevel);
                     }}
                   />
                 </div>
@@ -271,29 +256,16 @@ export default function ReportsClient({
                   value={receivedLevel}
                   onChange={(e) => {
                     setReceivedLevel(e.target.value);
-                    loadReceived(1, receivedSearch, e.target.value, receivedItemId);
+                    loadReceived(1, receivedSearch, e.target.value);
                   }}
                 >
                   <option value="">ทุกชั้น</option>
                   <option value="ม.1">ม.1</option>
                   <option value="ม.4">ม.4</option>
                 </select>
-                <select
-                  className="border rounded-md px-3 py-2 text-sm bg-white"
-                  value={receivedItemId}
-                  onChange={(e) => {
-                    setReceivedItemId(e.target.value);
-                    loadReceived(1, receivedSearch, receivedLevel, e.target.value);
-                  }}
-                >
-                  <option value="">ทุกสินค้า</option>
-                  {receivedFilterItems.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
                 <button
                   className="px-4 py-2 bg-black text-white text-sm rounded-md hover:bg-gray-800 disabled:opacity-50"
-                  onClick={() => loadReceived(1, receivedSearch, receivedLevel, receivedItemId)}
+                  onClick={() => loadReceived(1, receivedSearch, receivedLevel)}
                   disabled={receivedLoading}
                 >
                   ค้นหา
@@ -312,36 +284,28 @@ export default function ReportsClient({
                         <TableHead>เลขประจำตัว</TableHead>
                         <TableHead>ชื่อ-นามสกุล</TableHead>
                         <TableHead>ชั้น/ห้อง</TableHead>
-                        <TableHead>สินค้าที่รับ</TableHead>
-                        <TableHead>วันที่รับ</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {received.map((item, idx) => (
-                        <TableRow key={item.id}>
+                      {received.map((student, idx) => (
+                        <TableRow key={student.id}>
                           <TableCell className="text-muted-foreground">
                             {(receivedPagination.page - 1) * 50 + idx + 1}
                           </TableCell>
                           <TableCell className="font-mono">
-                            {item.student.studentCode}
+                            {student.studentCode}
                           </TableCell>
                           <TableCell>
-                            {item.student.prefix}{item.student.firstName} {item.student.lastName}
+                            {student.prefix}{student.firstName} {student.lastName}
                           </TableCell>
                           <TableCell>
-                            {item.student.level}/{item.student.room}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className="bg-green-100 text-green-700">{item.item.name}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {new Date(item.scannedAt).toLocaleDateString("th-TH")}
+                            {student.level}/{student.room}
                           </TableCell>
                         </TableRow>
                       ))}
                       {received.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                             ไม่พบข้อมูล
                           </TableCell>
                         </TableRow>
@@ -353,7 +317,7 @@ export default function ReportsClient({
                   {receivedPagination.totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4">
                       <p className="text-sm text-muted-foreground">
-                        หน้า {receivedPagination.page} / {receivedPagination.totalPages} (ทั้งหมด {receivedPagination.total} รายการ)
+                        หน้า {receivedPagination.page} / {receivedPagination.totalPages} (ทั้งหมด {receivedPagination.total} คน)
                       </p>
                       <div className="flex gap-2">
                         <button

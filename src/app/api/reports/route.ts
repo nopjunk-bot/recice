@@ -108,72 +108,51 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === "received") {
-    // นักเรียนที่รับสินค้าแล้ว — ใช้ single query (ไม่ N+1), pagination + search
+    // รายชื่อนักเรียนที่รับสินค้าแล้ว (ไม่ซ้ำ) — query จาก Student ที่มี distribution received=true
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = 50;
     const skip = (page - 1) * limit;
     const search = searchParams.get("search")?.trim() || "";
     const level = searchParams.get("level") || "";
-    const itemId = searchParams.get("itemId") || "";
 
-    // สร้าง where clause แบบ dynamic
-    const where: Record<string, unknown> = { received: true };
+    // สร้าง where clause: นักเรียนที่มีอย่างน้อย 1 distribution ที่ received=true
+    const where: Record<string, unknown> = {
+      distributions: { some: { received: true } },
+    };
 
-    if (itemId) {
-      where.itemId = itemId;
-    }
-
-    // search + level filter ลงไปที่ student relation
-    const studentWhere: Record<string, unknown> = {};
     if (level) {
-      studentWhere.level = level;
+      where.level = level;
     }
     if (search) {
-      studentWhere.OR = [
+      where.OR = [
         { studentCode: { contains: search, mode: "insensitive" } },
         { firstName: { contains: search, mode: "insensitive" } },
         { lastName: { contains: search, mode: "insensitive" } },
       ];
     }
-    if (Object.keys(studentWhere).length > 0) {
-      where.student = studentWhere;
-    }
 
-    // ดึง count + data พร้อมกัน (parallel) เพื่อไม่ให้ server ทำงานหนัก
-    const [total, distributions, items] = await Promise.all([
-      prisma.welfareDistribution.count({ where }),
-      prisma.welfareDistribution.findMany({
+    // ดึง count + data พร้อมกัน (parallel)
+    const [total, students] = await Promise.all([
+      prisma.student.count({ where }),
+      prisma.student.findMany({
         where,
         select: {
           id: true,
-          scannedAt: true,
-          student: {
-            select: {
-              studentCode: true,
-              prefix: true,
-              firstName: true,
-              lastName: true,
-              level: true,
-              room: true,
-            },
-          },
-          item: { select: { id: true, name: true } },
+          studentCode: true,
+          prefix: true,
+          firstName: true,
+          lastName: true,
+          level: true,
+          room: true,
         },
-        orderBy: { scannedAt: "desc" },
+        orderBy: [{ level: "asc" }, { room: "asc" }, { studentCode: "asc" }],
         skip,
         take: limit,
-      }),
-      // ดึงรายการสินค้าสำหรับ dropdown filter (ครั้งเดียว)
-      prisma.welfareItem.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
       }),
     ]);
 
     return NextResponse.json({
-      data: distributions,
-      items,
+      data: students,
       pagination: {
         page,
         limit,
