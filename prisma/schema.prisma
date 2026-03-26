@@ -12,6 +12,7 @@ enum Role {
   FINANCE
   WELFARE_STAFF
   ACADEMIC
+  DATA_ENTRY
 }
 
 enum ReceiptType {
@@ -130,6 +131,7 @@ model WelfareDistribution {
   @@index([itemId])
   @@index([received])
   @@index([received, itemId])
+  @@index([received, scannedAt])
   @@unique([studentId, itemId])
 }
 
