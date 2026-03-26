@@ -33,16 +33,15 @@ export default function LoginPage() {
         return;
       }
 
-      // redirect ตาม role ทันที — ไม่ต้องผ่าน select-department ถ้าไม่ใช่ ADMIN
+      // redirect ตาม role ทันที — ใช้ window.location.href เพื่อ hard navigation ให้ session cookie มีผลทันที
       const role = data.user?.role;
       if (role === "ACADEMIC") {
-        router.push("/academic");
+        window.location.href = "/academic";
       } else if (role === "ADMIN") {
-        router.push("/select-department");
+        window.location.href = "/select-department";
       } else {
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
       }
-      router.refresh();
     } catch {
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
     } finally {
