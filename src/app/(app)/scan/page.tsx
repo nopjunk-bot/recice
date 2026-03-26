@@ -378,7 +378,10 @@ export default function ScanPage() {
     // เคลียร์หน้าจอทันที → พร้อมสแกนคนถัดไป
     setStudent(null);
     setItemStates([]);
-    addHistory(studentName, savedStudent.studentCode, true, !isOnline);
+    // ออนไลน์: เพิ่ม history ตรงนี้ / ออฟไลน์: saveOffline() จะเพิ่มให้เอง
+    if (isOnline) {
+      addHistory(studentName, savedStudent.studentCode, true);
+    }
     focusInput();
 
     if (isOnline) {
