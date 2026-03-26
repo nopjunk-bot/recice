@@ -94,6 +94,7 @@ export default function ScanPage() {
   const [history, setHistory] = useState<ScanRecord[]>([]);
   const [quickMode, setQuickMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   // ─── Offline Mode ───
   const { isOnline } = useOnlineStatus();
@@ -178,6 +179,13 @@ export default function ScanPage() {
     setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
+    }, 100);
+  }, []);
+
+  // Focus save button after scan
+  const focusSaveButton = useCallback(() => {
+    setTimeout(() => {
+      saveButtonRef.current?.focus();
     }, 100);
   }, []);
 
@@ -354,6 +362,7 @@ export default function ScanPage() {
       setItemStates(states);
       setBarcode("");
       playBeep(true);
+      focusSaveButton();
     } catch {
       toast.error("เกิดข้อผิดพลาด");
     } finally {
@@ -786,6 +795,7 @@ export default function ScanPage() {
                   </div>
 
                   <Button
+                    ref={saveButtonRef}
                     onClick={handleSave}
                     className="w-full mt-6 h-12 text-lg"
                   >
