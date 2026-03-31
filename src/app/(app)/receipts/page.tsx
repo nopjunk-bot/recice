@@ -56,6 +56,7 @@ export default function ReceiptsPage() {
   const [filteredCount, setFilteredCount] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
   const [receiptDate, setReceiptDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -200,6 +201,52 @@ export default function ReceiptsPage() {
     }
   }
 
+  async function handleGenerateAll() {
+    if (!filterType || filterType === "all") {
+      toast.error("กรุณาเลือกประเภทก่อน (เช่น ม.1, ม.4 ทั่วไป)");
+      return;
+    }
+
+    setGeneratingAll(true);
+    try {
+      // ดึงรายชื่อนักเรียนทั้งหมดตาม filter
+      const params = new URLSearchParams();
+      params.set("receiptType", filterType);
+      if (filterRoom && filterRoom !== "all") params.set("room", filterRoom);
+      params.set("noPagination", "true");
+      const studentsRes = await fetch(`/api/students?${params}`);
+      const studentsData = await studentsRes.json();
+
+      if (!studentsData.students || studentsData.students.length === 0) {
+        toast.error("ไม่พบนักเรียนในประเภทที่เลือก");
+        return;
+      }
+
+      const allIds = studentsData.students.map((s: Student) => s.id);
+
+      // สร้างใบเสร็จทั้งหมด
+      const res = await fetch("/api/receipts/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: allIds }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error);
+        return;
+      }
+
+      await generatePDF(data.receipts, receiptDate);
+      toast.success(`สร้างใบเสร็จ ${data.receipts.length} ใบสำเร็จ`);
+      loadStudents();
+    } catch {
+      toast.error("เกิดข้อผิดพลาด");
+    } finally {
+      setGeneratingAll(false);
+    }
+  }
+
   async function generatePDF(
     receipts: {
       student: Student;
@@ -228,7 +275,7 @@ export default function ReceiptsPage() {
             disabled={downloadingPdf}
           >
             <FileDown className="w-4 h-4 mr-2" />
-            {downloadingPdf ? "กำลังสร้าง PDF..." : "รายชื่อ PDF"}
+            {downloadingPdf ? "กำลังสร้าง PDF..." : filterType && filterType !== "all" ? `PDF รายชื่อ ${receiptTypeLabels[filterType]} ทั้งหมด` : "PDF รายชื่อทั้งหมด"}
           </Button>
           <Button
             variant="outline"
@@ -239,13 +286,25 @@ export default function ReceiptsPage() {
             {downloading ? "กำลังดาวน์โหลด..." : "รายชื่อ Excel"}
           </Button>
           <Button
+            onClick={handleGenerateAll}
+            disabled={generatingAll || !filterType || filterType === "all"}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {generatingAll
+              ? "กำลังสร้าง..."
+              : filterType && filterType !== "all"
+                ? `สร้าง PDF ใบเสร็จ ${receiptTypeLabels[filterType]} ทั้งหมด`
+                : "สร้าง PDF ใบเสร็จทั้งหมด (เลือกประเภทก่อน)"}
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleGenerate}
             disabled={generating || selected.size === 0}
           >
             <Download className="w-4 h-4 mr-2" />
             {generating
               ? "กำลังสร้าง..."
-              : `สร้าง PDF (${selected.size} ใบ)`}
+              : `สร้าง PDF ใบเสร็จ (${selected.size} ใบ)`}
           </Button>
         </div>
       </div>
