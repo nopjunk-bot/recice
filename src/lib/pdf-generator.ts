@@ -305,7 +305,9 @@ type UnderpaidRecord = {
 const receiptTypeLabels: Record<string, string> = {
   M1: "ม.1",
   M4_GENERAL: "ม.4 ทั่วไป",
-  M4_LANG: "ม.4 ภาษา",
+  M4_ENGLISH: "ม.4 อังกฤษ",
+  M4_CHINESE: "ม.4 จีน",
+  M4_JAPANESE: "ม.4 ญี่ปุ่น",
 };
 
 export function generateUnderpaidReportPDF(records: UnderpaidRecord[]) {

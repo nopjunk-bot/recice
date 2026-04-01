@@ -39,7 +39,9 @@ type Student = {
 const receiptTypeLabels: Record<string, string> = {
   M1: "ม.1",
   M4_GENERAL: "ม.4 ทั่วไป",
-  M4_LANG: "ม.4 อังกฤษ จีน ญี่ปุ่น",
+  M4_ENGLISH: "ม.4 อังกฤษ",
+  M4_CHINESE: "ม.4 จีน",
+  M4_JAPANESE: "ม.4 ญี่ปุ่น",
 };
 
 export default function ImportPage() {
@@ -142,12 +144,20 @@ export default function ImportPage() {
                 คอลัมน์: เลขประจำตัว | คำนำหน้า | ชื่อ | นามสกุล | ชั้น | ห้อง
               </p>
             </div>
-            <Button variant="outline" asChild>
-              <a href="/api/import/template" download>
-                <Download className="w-4 h-4 mr-2" />
-                ดาวน์โหลด Template
-              </a>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" asChild>
+                <a href="/api/import/template" download>
+                  <Download className="w-4 h-4 mr-2" />
+                  Template ม.1
+                </a>
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="/api/import/template?grade=m4" download>
+                  <Download className="w-4 h-4 mr-2" />
+                  Template ม.4
+                </a>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -169,7 +179,9 @@ export default function ImportPage() {
                 <SelectContent>
                   <SelectItem value="M1">ม.1</SelectItem>
                   <SelectItem value="M4_GENERAL">ม.4 ทั่วไป</SelectItem>
-                  <SelectItem value="M4_LANG">ม.4 อังกฤษ จีน ญี่ปุ่น</SelectItem>
+                  <SelectItem value="M4_ENGLISH">ม.4 อังกฤษ</SelectItem>
+                  <SelectItem value="M4_CHINESE">ม.4 จีน</SelectItem>
+                  <SelectItem value="M4_JAPANESE">ม.4 ญี่ปุ่น</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -205,7 +217,9 @@ export default function ImportPage() {
                 <SelectItem value="all">ทุกประเภท</SelectItem>
                 <SelectItem value="M1">ม.1</SelectItem>
                 <SelectItem value="M4_GENERAL">ม.4 ทั่วไป</SelectItem>
-                <SelectItem value="M4_LANG">ม.4 อังกฤษ จีน ญี่ปุ่น</SelectItem>
+                <SelectItem value="M4_ENGLISH">ม.4 อังกฤษ</SelectItem>
+                <SelectItem value="M4_CHINESE">ม.4 จีน</SelectItem>
+                <SelectItem value="M4_JAPANESE">ม.4 ญี่ปุ่น</SelectItem>
               </SelectContent>
             </Select>
           </div>

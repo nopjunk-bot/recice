@@ -18,7 +18,9 @@ enum Role {
 enum ReceiptType {
   M1
   M4_GENERAL
-  M4_LANG
+  M4_ENGLISH
+  M4_CHINESE
+  M4_JAPANESE
 }
 
 enum DocumentRequestStatus {

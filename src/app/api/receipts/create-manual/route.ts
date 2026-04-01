@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "กรุณากรอกจำนวนเงินที่ถูกต้อง" }, { status: 400 });
     }
 
-    if (!["M1", "M4_GENERAL", "M4_LANG"].includes(receiptType)) {
+    if (!["M1", "M4_GENERAL", "M4_ENGLISH", "M4_CHINESE", "M4_JAPANESE"].includes(receiptType)) {
       return NextResponse.json({ error: "ประเภทใบเสร็จไม่ถูกต้อง" }, { status: 400 });
     }
 

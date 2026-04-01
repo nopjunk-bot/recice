@@ -91,10 +91,14 @@ async function main() {
 
   const studentData = [];
   for (let i = 0; i < 30; i++) {
-    // M1: 0-11 (12 คน), M4_GENERAL: 12-21 (10 คน), M4_LANG: 22-29 (8 คน)
+    // M1: 0-11 (12 คน), M4_GENERAL: 12-17 (6 คน), M4_ENGLISH: 18-21 (4 คน), M4_CHINESE: 22-25 (4 คน), M4_JAPANESE: 26-29 (4 คน)
     const isM1 = i < 12;
-    const isM4General = i >= 12 && i < 22;
-    const receiptType = isM1 ? "M1" as const : isM4General ? "M4_GENERAL" as const : "M4_LANG" as const;
+    let receiptType: "M1" | "M4_GENERAL" | "M4_ENGLISH" | "M4_CHINESE" | "M4_JAPANESE";
+    if (isM1) receiptType = "M1";
+    else if (i < 18) receiptType = "M4_GENERAL";
+    else if (i < 22) receiptType = "M4_ENGLISH";
+    else if (i < 26) receiptType = "M4_CHINESE";
+    else receiptType = "M4_JAPANESE";
     const level = isM1 ? "ม.1" : "ม.4";
     const room = String((i % 4) + 1);
     const prefixIdx = isM1 ? (i % 2) : (i % 2) + 2;
@@ -132,7 +136,7 @@ async function main() {
 
   console.log("Seed data created successfully!");
   console.log("---");
-  console.log("Students: 30 คน (ม.1: 12 คน, ม.4 ทั่วไป: 10 คน, ม.4 อังกฤษ จีน ญี่ปุ่น: 8 คน)");
+  console.log("Students: 30 คน (ม.1: 12, ม.4 ทั่วไป: 6, ม.4 อังกฤษ: 4, ม.4 จีน: 4, ม.4 ญี่ปุ่น: 4)");
   console.log("Receipts: 10 ใบ (สร้างให้ 10 คนแรก)");
   console.log("---");
   console.log("Login accounts:");

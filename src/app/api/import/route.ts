@@ -2,6 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import ExcelJS from "exceljs";
+import type { ReceiptTypeKey } from "@/lib/receipt-config";
+
+const m4SheetMap: Record<string, ReceiptTypeKey> = {
+  "ทั่วไป": "M4_GENERAL",
+  "อังกฤษ": "M4_ENGLISH",
+  "จีน": "M4_CHINESE",
+  "ญี่ปุ่น": "M4_JAPANESE",
+};
+
+const validReceiptTypes: ReceiptTypeKey[] = ["M1", "M4_GENERAL", "M4_ENGLISH", "M4_CHINESE", "M4_JAPANESE"];
+
+type StudentRow = {
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
+  receiptType: ReceiptTypeKey;
+};
+
+function parseSheet(worksheet: ExcelJS.Worksheet, receiptType: ReceiptTypeKey): StudentRow[] {
+  const rows: StudentRow[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const studentCode = String(row.getCell(1).value || "").trim();
+    const prefix = String(row.getCell(2).value || "").trim();
+    const firstName = String(row.getCell(3).value || "").trim();
+    const lastName = String(row.getCell(4).value || "").trim();
+    const level = String(row.getCell(5).value || "").trim();
+    const room = String(row.getCell(6).value || "").trim();
+
+    if (studentCode && firstName && lastName) {
+      rows.push({ studentCode, prefix, firstName, lastName, level, room, receiptType });
+    }
+  });
+  return rows;
+}
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
@@ -14,9 +52,9 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File;
     const receiptType = formData.get("receiptType") as string;
 
-    if (!file || !receiptType) {
+    if (!file) {
       return NextResponse.json(
-        { error: "กรุณาเลือกไฟล์และประเภทใบเสร็จ" },
+        { error: "กรุณาเลือกไฟล์" },
         { status: 400 }
       );
     }
@@ -24,37 +62,41 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(arrayBuffer as ExcelJS.Buffer);
-    const worksheet = workbook.worksheets[0];
 
-    if (!worksheet) {
-      return NextResponse.json(
-        { error: "ไม่พบข้อมูลในไฟล์ Excel" },
-        { status: 400 }
-      );
-    }
+    let students: StudentRow[] = [];
 
-    const students: {
-      studentCode: string;
-      prefix: string;
-      firstName: string;
-      lastName: string;
-      level: string;
-      room: string;
-    }[] = [];
+    // ตรวจว่าเป็นไฟล์ multi-sheet ม.4 หรือไม่ (มี sheet ชื่อ ทั่วไป/อังกฤษ/จีน/ญี่ปุ่น)
+    const sheetNames = workbook.worksheets.map((ws) => ws.name);
+    const matchedM4Sheets = sheetNames.filter((name) => name in m4SheetMap);
 
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header
-      const studentCode = String(row.getCell(1).value || "").trim();
-      const prefix = String(row.getCell(2).value || "").trim();
-      const firstName = String(row.getCell(3).value || "").trim();
-      const lastName = String(row.getCell(4).value || "").trim();
-      const level = String(row.getCell(5).value || "").trim();
-      const room = String(row.getCell(6).value || "").trim();
-
-      if (studentCode && firstName && lastName) {
-        students.push({ studentCode, prefix, firstName, lastName, level, room });
+    if (matchedM4Sheets.length > 0) {
+      // โหมด multi-sheet: อ่านทุก sheet ที่ตรงกับ m4SheetMap
+      for (const sheetName of matchedM4Sheets) {
+        const worksheet = workbook.getWorksheet(sheetName);
+        if (worksheet) {
+          const type = m4SheetMap[sheetName];
+          students.push(...parseSheet(worksheet, type));
+        }
       }
-    });
+    } else {
+      // โหมดปกติ: ใช้ receiptType จาก form
+      if (!receiptType || !validReceiptTypes.includes(receiptType as ReceiptTypeKey)) {
+        return NextResponse.json(
+          { error: "กรุณาเลือกประเภทใบเสร็จ" },
+          { status: 400 }
+        );
+      }
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        return NextResponse.json(
+          { error: "ไม่พบข้อมูลในไฟล์ Excel" },
+          { status: 400 }
+        );
+      }
+
+      students = parseSheet(worksheet, receiptType as ReceiptTypeKey);
+    }
 
     if (students.length === 0) {
       return NextResponse.json(
@@ -90,11 +132,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create students (batch insert — 1 query แทน N queries)
+    // Create students (batch insert)
     await prisma.student.createMany({
       data: newStudents.map((student) => ({
-        ...student,
-        receiptType: receiptType as "M1" | "M4_GENERAL" | "M4_LANG",
+        studentCode: student.studentCode,
+        prefix: student.prefix,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        level: student.level,
+        room: student.room,
+        receiptType: student.receiptType,
         importBatchId: batch.id,
       })),
     });
