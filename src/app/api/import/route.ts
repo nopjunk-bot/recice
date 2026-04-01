@@ -23,7 +23,28 @@ type StudentRow = {
   receiptType: ReceiptTypeKey;
 };
 
-function parseSheet(worksheet: ExcelJS.Worksheet, receiptType: ReceiptTypeKey): StudentRow[] {
+// Template ม.4 มี 10 คอลัมน์: เลขที่ใบสมัคร(1), เลขประจำตัว(2), คำนำหน้า(3), ชื่อ(4), นามสกุล(5), แผนการเรียน(6), ประเภท(7), ชั้น(8), ห้อง(9), หมายเหตุ(10)
+// Template ม.1 มี 6 คอลัมน์: เลขประจำตัว(1), คำนำหน้า(2), ชื่อ(3), นามสกุล(4), ชั้น(5), ห้อง(6)
+
+function parseM4Sheet(worksheet: ExcelJS.Worksheet, receiptType: ReceiptTypeKey): StudentRow[] {
+  const rows: StudentRow[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const studentCode = String(row.getCell(2).value || "").trim();
+    const prefix = String(row.getCell(3).value || "").trim();
+    const firstName = String(row.getCell(4).value || "").trim();
+    const lastName = String(row.getCell(5).value || "").trim();
+    const level = String(row.getCell(8).value || "").trim();
+    const room = String(row.getCell(9).value || "").trim();
+
+    if (studentCode && firstName && lastName) {
+      rows.push({ studentCode, prefix, firstName, lastName, level, room, receiptType });
+    }
+  });
+  return rows;
+}
+
+function parseM1Sheet(worksheet: ExcelJS.Worksheet, receiptType: ReceiptTypeKey): StudentRow[] {
   const rows: StudentRow[] = [];
   worksheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
@@ -75,7 +96,7 @@ export async function POST(req: NextRequest) {
         const worksheet = workbook.getWorksheet(sheetName);
         if (worksheet) {
           const type = m4SheetMap[sheetName];
-          students.push(...parseSheet(worksheet, type));
+          students.push(...parseM4Sheet(worksheet, type));
         }
       }
     } else {
@@ -95,7 +116,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      students = parseSheet(worksheet, receiptType as ReceiptTypeKey);
+      students = parseM1Sheet(worksheet, receiptType as ReceiptTypeKey);
     }
 
     if (students.length === 0) {
