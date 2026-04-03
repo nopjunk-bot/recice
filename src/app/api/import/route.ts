@@ -99,6 +99,25 @@ export async function POST(req: NextRequest) {
           students.push(...parseM4Sheet(worksheet, type));
         }
       }
+
+      // ตรวจ studentCode ซ้ำภายในไฟล์ (ข้าม Sheet)
+      const codeMap = new Map<string, string[]>();
+      for (const s of students) {
+        const sheets = codeMap.get(s.studentCode) || [];
+        const sheetLabel = Object.entries(m4SheetMap).find(([, v]) => v === s.receiptType)?.[0] || "";
+        if (!sheets.includes(sheetLabel)) sheets.push(sheetLabel);
+        codeMap.set(s.studentCode, sheets);
+      }
+      const internalDupes = [...codeMap.entries()].filter(([, sheets]) => sheets.length > 1);
+      if (internalDupes.length > 0) {
+        const examples = internalDupes.slice(0, 5).map(([code, sheets]) => `${code} (${sheets.join(", ")})`).join(", ");
+        return NextResponse.json(
+          {
+            error: `พบเลขประจำตัวซ้ำกันข้าม Sheet ${internalDupes.length} รายการ เช่น: ${examples} — กรุณาตรวจสอบว่าเลขประจำตัวในแต่ละ Sheet ไม่ซ้ำกัน`,
+          },
+          { status: 400 }
+        );
+      }
     } else {
       // โหมดปกติ: ใช้ receiptType จาก form
       if (!receiptType || !validReceiptTypes.includes(receiptType as ReceiptTypeKey)) {

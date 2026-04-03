@@ -28,6 +28,7 @@ import {
   CloudUpload,
   Loader2,
   Database,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -84,6 +85,7 @@ type ScanRecord = {
   time: string;
   success: boolean;
   offline?: boolean;
+  duplicate?: boolean;
 };
 
 export default function ScanPage() {
@@ -91,6 +93,8 @@ export default function ScanPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [itemStates, setItemStates] = useState<ItemState[]>([]);
   const [loading, setLoading] = useState(false);
+  const [duplicateStudent, setDuplicateStudent] = useState<Student | null>(null);
+  const duplicateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [history, setHistory] = useState<ScanRecord[]>([]);
   const [quickMode, setQuickMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -190,7 +194,7 @@ export default function ScanPage() {
   }, []);
 
   const addHistory = useCallback(
-    (name: string, code: string, success: boolean, offline = false) => {
+    (name: string, code: string, success: boolean, offline = false, duplicate = false) => {
       setHistory((prev) => [
         {
           name,
@@ -198,6 +202,7 @@ export default function ScanPage() {
           time: new Date().toLocaleTimeString("th-TH"),
           success,
           offline,
+          duplicate,
         },
         ...prev.slice(0, 9),
       ]);
@@ -261,6 +266,9 @@ export default function ScanPage() {
   async function handleScan() {
     if (!barcode.trim()) return;
     setLoading(true);
+    // clear duplicate warning ถ้ามี
+    if (duplicateTimerRef.current) clearTimeout(duplicateTimerRef.current);
+    setDuplicateStudent(null);
 
     try {
       let scannedStudent: Student;
@@ -313,6 +321,26 @@ export default function ScanPage() {
       }
 
       const states = buildItemStates(scannedStudent, welfareItems);
+
+      // ─── ตรวจจับสแกนซ้ำ: นักเรียนเคยรับสินค้าแล้ว ───
+      if (scannedStudent.distributions.length > 0) {
+        const dupName = `${scannedStudent.prefix}${scannedStudent.firstName} ${scannedStudent.lastName}`;
+        // clear timer เดิมถ้ามี
+        if (duplicateTimerRef.current) clearTimeout(duplicateTimerRef.current);
+        setDuplicateStudent(scannedStudent);
+        setStudent(null);
+        setItemStates([]);
+        setBarcode("");
+        playBeep(false);
+        addHistory(dupName, scannedStudent.studentCode, false, false, true);
+        // auto-clear warning หลัง 3 วินาที
+        duplicateTimerRef.current = setTimeout(() => {
+          setDuplicateStudent(null);
+          focusInput();
+        }, 3000);
+        focusInput();
+        return;
+      }
 
       // โหมดสแกนเร็ว
       if (quickMode && scannedStudent.distributions.length === 0) {
@@ -681,6 +709,27 @@ export default function ScanPage() {
         </CardContent>
       </Card>
 
+      {/* Duplicate Warning — ข้อความเตือนสแกนซ้ำ ขนาดใหญ่ สีแดง */}
+      {duplicateStudent && (
+        <Card className="border-4 border-red-500 bg-red-50 animate-pulse">
+          <CardContent className="py-10 text-center">
+            <AlertTriangle className="w-24 h-24 mx-auto mb-4 text-red-500" />
+            <p className="text-4xl font-bold text-red-600 mb-3">
+              รับสินค้าไปแล้ว!
+            </p>
+            <p className="text-2xl font-semibold text-red-500">
+              {duplicateStudent.prefix}{duplicateStudent.firstName} {duplicateStudent.lastName}
+            </p>
+            <p className="text-lg text-red-400 mt-2">
+              เลขประจำตัว: {duplicateStudent.studentCode} | ชั้น {duplicateStudent.level}/{duplicateStudent.room}
+            </p>
+            <p className="text-sm text-red-300 mt-4">
+              จะปิดข้อความนี้อัตโนมัติใน 3 วินาที...
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Student Info + Items */}
         <div className="lg:col-span-2 space-y-4">
@@ -846,16 +895,21 @@ export default function ScanPage() {
                   <div
                     key={i}
                     className={`p-3 rounded-md border ${
-                      record.success
-                        ? record.offline
-                          ? "border-orange-200 bg-orange-50"
-                          : "border-green-200 bg-green-50"
-                        : "border-red-200 bg-red-50"
+                      record.duplicate
+                        ? "border-red-400 bg-red-100"
+                        : record.success
+                          ? record.offline
+                            ? "border-orange-200 bg-orange-50"
+                            : "border-green-200 bg-green-50"
+                          : "border-red-200 bg-red-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{record.name}</span>
                       <div className="flex items-center gap-1">
+                        {record.duplicate && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">ซ้ำ</Badge>
+                        )}
                         {record.offline && (
                           <WifiOff className="w-3 h-3 text-orange-500" />
                         )}
