@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
@@ -78,6 +78,62 @@ export default function CreateReceiptPage() {
   const [foundStudent, setFoundStudent] = useState(false);
   const [underpaid, setUnderpaid] = useState<UnderpaidRecord[]>([]);
   const [loadingReport, setLoadingReport] = useState(false);
+  // ค้นหาด้วยชื่อ/นามสกุล
+  type SearchStudent = { id: string; studentCode: string; prefix: string; firstName: string; lastName: string; level: string; room: string; receiptType: string };
+  const [searchResults, setSearchResults] = useState<SearchStudent[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // ปิด dropdown เมื่อคลิกนอก
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const debouncedSearch = useCallback((query: string) => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (query.trim().length < 2) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/students?search=${encodeURIComponent(query.trim())}&limit=10&page=1`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.students || []);
+          setShowDropdown(true);
+        }
+      } catch { /* ignore */ }
+      finally { setSearching(false); }
+    }, 300);
+  }, []);
+
+  function selectStudent(s: SearchStudent) {
+    setForm((prev) => ({
+      ...prev,
+      studentCode: s.studentCode,
+      prefix: s.prefix,
+      firstName: s.firstName,
+      lastName: s.lastName,
+      level: s.level,
+      room: s.room,
+      receiptType: s.receiptType,
+    }));
+    setFoundStudent(true);
+    setShowDropdown(false);
+    setSearchResults([]);
+    toast.success(`พบข้อมูล: ${s.prefix}${s.firstName} ${s.lastName}`);
+  }
 
   async function loadUnderpaid() {
     setLoadingReport(true);
@@ -222,30 +278,72 @@ export default function CreateReceiptPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Student Code with Lookup */}
+          {/* Student Code with Lookup + Name Search */}
           <div className="space-y-2">
-            <Label>เลขประจำตัวนักเรียน</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="เช่น 12345"
-                value={form.studentCode}
-                onChange={(e) => {
-                  updateField("studentCode", e.target.value);
-                  setFoundStudent(false);
-                }}
-                onBlur={handleLookup}
-              />
-              <Button
-                variant="outline"
-                onClick={handleLookup}
-                disabled={looking || !form.studentCode.trim()}
-              >
-                {looking ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Search className="w-4 h-4" />
-                )}
-              </Button>
+            <Label>ค้นหานักเรียน</Label>
+            <div className="relative" ref={dropdownRef}>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    placeholder="เลขประจำตัว, ชื่อ หรือ นามสกุล"
+                    value={form.studentCode}
+                    onChange={(e) => {
+                      updateField("studentCode", e.target.value);
+                      setFoundStudent(false);
+                      debouncedSearch(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setShowDropdown(false);
+                    }}
+                    onBlur={() => {
+                      // delay เพื่อให้คลิก dropdown ได้ก่อน blur ปิด
+                      setTimeout(() => {
+                        if (!showDropdown) handleLookup();
+                      }, 200);
+                    }}
+                  />
+                  {searching && (
+                    <Loader2 className="w-4 h-4 animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleLookup}
+                  disabled={looking || !form.studentCode.trim()}
+                >
+                  {looking ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+              {/* Dropdown ผลการค้นหา */}
+              {showDropdown && searchResults.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-64 overflow-y-auto">
+                  {searchResults.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => selectStudent(s)}
+                    >
+                      <div className="font-medium text-sm">
+                        {s.prefix}{s.firstName} {s.lastName}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        เลขประจำตัว: {s.studentCode} | ชั้น ม.{s.level}/{s.room} | {receiptTypeLabels[s.receiptType] || s.receiptType}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showDropdown && searchResults.length === 0 && !searching && (
+                <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-sm text-muted-foreground text-center">
+                  ไม่พบข้อมูลนักเรียน
+                </div>
+              )}
             </div>
             {foundStudent && (
               <p className="text-xs text-green-600">
