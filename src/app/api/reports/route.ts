@@ -162,6 +162,25 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (type === "not-scanned") {
+    // นักเรียนที่ยังไม่ได้สแกนรับสินค้า (ไม่มี distribution record เลย)
+    const students = await prisma.student.findMany({
+      where: { distributions: { none: {} } },
+      select: {
+        id: true,
+        studentCode: true,
+        prefix: true,
+        firstName: true,
+        lastName: true,
+        level: true,
+        room: true,
+      },
+      orderBy: [{ level: "asc" }, { room: "asc" }, { studentCode: "asc" }],
+    });
+
+    return NextResponse.json(students);
+  }
+
   if (type === "size-summary") {
     // Summary of pending sizes for clothing items (เสื้อ/กางเกง) that were not received
     const distributions = await prisma.welfareDistribution.findMany({

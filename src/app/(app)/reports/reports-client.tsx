@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateUnpaidReportPDF, generateUnderpaidReportPDF } from "@/lib/pdf-generator";
 
@@ -143,6 +143,9 @@ export default function ReportsClient({
   const [unpaid, setUnpaid] = useState<UnpaidItem[]>([]);
   const [underpaid, setUnderpaid] = useState<UnderpaidItem[]>([]);
 
+  // State สำหรับ tab ยังไม่สแกน
+  const [notScanned, setNotScanned] = useState<ReceivedStudent[]>([]);
+
   // State สำหรับ tab "รับสินค้าแล้ว"
   const [received, setReceived] = useState<ReceivedStudent[]>([]);
   const [receivedPagination, setReceivedPagination] = useState({ page: 1, total: 0, totalPages: 0 });
@@ -161,6 +164,7 @@ export default function ReportsClient({
     if (activeTab === "summary") loadSummary();
     else if (activeTab === "by-level") loadByLevel();
     else if (activeTab === "size-summary") loadSizeSummary();
+    else if (activeTab === "not-scanned") loadNotScanned();
     else if (activeTab === "unpaid") loadUnpaid();
     else if (activeTab === "underpaid") loadUnderpaid();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -198,6 +202,12 @@ export default function ReportsClient({
     setLoaded((prev) => ({ ...prev, "size-summary": true }));
   }
 
+  async function loadNotScanned() {
+    const res = await fetch("/api/reports?type=not-scanned");
+    if (res.ok) setNotScanned(await res.json());
+    setLoaded((prev) => ({ ...prev, "not-scanned": true }));
+  }
+
   async function loadUnpaid() {
     const res = await fetch("/api/receipts/unpaid");
     if (res.ok) setUnpaid(await res.json());
@@ -233,6 +243,10 @@ export default function ReportsClient({
           <TabsTrigger value="received" className="gap-2">
             <CheckCircle className="w-4 h-4" />
             รับสินค้าแล้ว
+          </TabsTrigger>
+          <TabsTrigger value="not-scanned" className="gap-2">
+            <UserX className="w-4 h-4" />
+            ยังไม่สแกน
           </TabsTrigger>
           <TabsTrigger value="summary" className="gap-2">
             <Package className="w-4 h-4" />
@@ -420,6 +434,78 @@ export default function ReportsClient({
                     </div>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="not-scanned">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-lg">
+                  นักเรียนที่ยังไม่ได้สแกนรับสินค้า ({notScanned.length} คน)
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  disabled={notScanned.length === 0}
+                  onClick={() => {
+                    window.open("/api/reports/not-scanned/download", "_blank");
+                  }}
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  ดาวน์โหลด Excel (แยกตามชั้น)
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {notScanned.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  ไม่มีนักเรียนที่ยังไม่ได้สแกน
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(
+                    notScanned.reduce((acc, s) => {
+                      const grade = getGradeLevel(s.level);
+                      if (!acc[grade]) acc[grade] = [];
+                      acc[grade].push(s);
+                      return acc;
+                    }, {} as Record<string, ReceivedStudent[]>)
+                  )
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([grade, list]) => (
+                      <div key={grade}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-bold text-lg text-amber-700">
+                            {grade} — {list.length} คน
+                          </h3>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-12">#</TableHead>
+                              <TableHead>เลขประจำตัว</TableHead>
+                              <TableHead>ชื่อ-นามสกุล</TableHead>
+                              <TableHead>ชั้น/ห้อง</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {list.map((s, i) => (
+                              <TableRow key={s.id}>
+                                <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                                <TableCell className="font-mono">{s.studentCode}</TableCell>
+                                <TableCell>
+                                  {s.prefix}{s.firstName} {s.lastName}
+                                </TableCell>
+                                <TableCell>{s.level}/{s.room}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ))}
+                </div>
               )}
             </CardContent>
           </Card>
