@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { generateUnpaidReportPDF, generateUnderpaidReportPDF } from "@/lib/pdf-generator";
 
 type NotReceivedItem = {
   id: string;
@@ -79,6 +81,50 @@ type ReceivedResponse = {
   };
 };
 
+type StudentInfo = {
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
+};
+
+type UnpaidItem = {
+  id: string;
+  receiptNumber: string;
+  receiptType: string;
+  expectedAmount: number;
+  student: StudentInfo;
+};
+
+type UnderpaidItem = {
+  id: string;
+  receiptNumber: string;
+  receiptType: string;
+  paidAmount: number;
+  expectedAmount: number;
+  difference: number;
+  student: StudentInfo;
+};
+
+const receiptTypeLabels: Record<string, string> = {
+  M1: "ม.1",
+  M4_GENERAL: "ม.4 ทั่วไป",
+  M4_ENGLISH: "ม.4 อังกฤษ",
+  M4_CHINESE: "ม.4 จีน",
+  M4_JAPANESE: "ม.4 ญี่ปุ่น",
+};
+
+// ดึงระดับชั้น (ม.1, ม.4) จาก level เช่น "1" → "ม.1", "4" → "ม.4"
+function getGradeLevel(level: string): string {
+  const trimmed = level.trim();
+  // รองรับทั้งรูปแบบ "1", "ม.1", "1/1"
+  const match = trimmed.match(/(\d+)/);
+  if (match) return `ม.${match[1]}`;
+  return trimmed || "ไม่ระบุ";
+}
+
 export default function ReportsClient({
   initialNotReceived,
 }: {
@@ -92,6 +138,10 @@ export default function ReportsClient({
   const [loaded, setLoaded] = useState<Record<string, boolean>>({
     "not-received": true, // แท็บแรกโหลดมาจาก server แล้ว
   });
+
+  // State สำหรับ tabs ค้างชำระ
+  const [unpaid, setUnpaid] = useState<UnpaidItem[]>([]);
+  const [underpaid, setUnderpaid] = useState<UnderpaidItem[]>([]);
 
   // State สำหรับ tab "รับสินค้าแล้ว"
   const [received, setReceived] = useState<ReceivedStudent[]>([]);
@@ -111,6 +161,8 @@ export default function ReportsClient({
     if (activeTab === "summary") loadSummary();
     else if (activeTab === "by-level") loadByLevel();
     else if (activeTab === "size-summary") loadSizeSummary();
+    else if (activeTab === "unpaid") loadUnpaid();
+    else if (activeTab === "underpaid") loadUnderpaid();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadReceived(page: number, search?: string, level?: string) {
@@ -146,6 +198,28 @@ export default function ReportsClient({
     setLoaded((prev) => ({ ...prev, "size-summary": true }));
   }
 
+  async function loadUnpaid() {
+    const res = await fetch("/api/receipts/unpaid");
+    if (res.ok) setUnpaid(await res.json());
+    setLoaded((prev) => ({ ...prev, "unpaid": true }));
+  }
+
+  async function loadUnderpaid() {
+    const res = await fetch("/api/receipts/underpaid");
+    if (res.ok) setUnderpaid(await res.json());
+    setLoaded((prev) => ({ ...prev, "underpaid": true }));
+  }
+
+  // จัดกลุ่มนักเรียนตามระดับชั้น (ม.1, ม.4)
+  function groupByGrade<T extends { student: StudentInfo }>(items: T[]): Record<string, T[]> {
+    return items.reduce((acc, item) => {
+      const grade = getGradeLevel(item.student.level);
+      if (!acc[grade]) acc[grade] = [];
+      acc[grade].push(item);
+      return acc;
+    }, {} as Record<string, T[]>);
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">รายงาน</h1>
@@ -171,6 +245,14 @@ export default function ReportsClient({
           <TabsTrigger value="size-summary" className="gap-2">
             <Shirt className="w-4 h-4" />
             สรุปไซส์ค้างรับ
+          </TabsTrigger>
+          <TabsTrigger value="unpaid" className="gap-2">
+            <Banknote className="w-4 h-4" />
+            ค้างชำระเต็มจำนวน
+          </TabsTrigger>
+          <TabsTrigger value="underpaid" className="gap-2">
+            <CircleDollarSign className="w-4 h-4" />
+            ชำระไม่ครบ
           </TabsTrigger>
         </TabsList>
 
@@ -556,6 +638,180 @@ export default function ReportsClient({
               })
             )}
           </div>
+        </TabsContent>
+
+        {/* Tab: ค้างชำระเต็มจำนวน */}
+        <TabsContent value="unpaid">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-lg">
+                    นักเรียนค้างชำระเต็มจำนวน ({unpaid.length} คน)
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ยอดค้างชำระรวม: {unpaid.reduce((s, r) => s + r.expectedAmount, 0).toLocaleString()} บาท
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={unpaid.length === 0}
+                  onClick={() => generateUnpaidReportPDF(unpaid)}
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  ดาวน์โหลด PDF
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {unpaid.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  ไม่มีนักเรียนค้างชำระ
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupByGrade(unpaid))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([grade, items]) => {
+                      const totalAmt = items.reduce((s, r) => s + r.expectedAmount, 0);
+                      return (
+                        <div key={grade}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-bold text-lg text-red-700">
+                              {grade} — {items.length} คน
+                            </h3>
+                            <Badge variant="destructive">
+                              {totalAmt.toLocaleString()} บาท
+                            </Badge>
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>เลขประจำตัว</TableHead>
+                                <TableHead>ชื่อ-นามสกุล</TableHead>
+                                <TableHead>ชั้น/ห้อง</TableHead>
+                                <TableHead>ประเภท</TableHead>
+                                <TableHead className="text-right">ยอดค้างชำระ</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {items.map((r) => (
+                                <TableRow key={r.id}>
+                                  <TableCell className="font-mono">{r.student.studentCode}</TableCell>
+                                  <TableCell>
+                                    {r.student.prefix}{r.student.firstName} {r.student.lastName}
+                                  </TableCell>
+                                  <TableCell>{r.student.level}/{r.student.room}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="secondary">
+                                      {receiptTypeLabels[r.receiptType] || r.receiptType}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium text-red-600">
+                                    {r.expectedAmount.toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: ชำระไม่ครบ */}
+        <TabsContent value="underpaid">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-lg">
+                    นักเรียนชำระเงินไม่ครบ ({underpaid.length} คน)
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ส่วนต่างรวม: {underpaid.reduce((s, r) => s + r.difference, 0).toLocaleString()} บาท
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={underpaid.length === 0}
+                  onClick={() => generateUnderpaidReportPDF(underpaid)}
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  ดาวน์โหลด PDF
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {underpaid.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  ไม่มีนักเรียนชำระเงินไม่ครบ
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupByGrade(underpaid))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([grade, items]) => {
+                      const totalDiff = items.reduce((s, r) => s + r.difference, 0);
+                      return (
+                        <div key={grade}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-bold text-lg text-orange-700">
+                              {grade} — {items.length} คน
+                            </h3>
+                            <Badge className="bg-orange-100 text-orange-700">
+                              ส่วนต่าง {totalDiff.toLocaleString()} บาท
+                            </Badge>
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>เลขประจำตัว</TableHead>
+                                <TableHead>ชื่อ-นามสกุล</TableHead>
+                                <TableHead>ชั้น/ห้อง</TableHead>
+                                <TableHead>ประเภท</TableHead>
+                                <TableHead className="text-right">ยอดชำระ</TableHead>
+                                <TableHead className="text-right">ยอดเต็ม</TableHead>
+                                <TableHead className="text-right">ส่วนต่าง</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {items.map((r) => (
+                                <TableRow key={r.id}>
+                                  <TableCell className="font-mono">{r.student.studentCode}</TableCell>
+                                  <TableCell>
+                                    {r.student.prefix}{r.student.firstName} {r.student.lastName}
+                                  </TableCell>
+                                  <TableCell>{r.student.level}/{r.student.room}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="secondary">
+                                      {receiptTypeLabels[r.receiptType] || r.receiptType}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {r.paidAmount.toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    {r.expectedAmount.toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium text-orange-600">
+                                    {r.difference.toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

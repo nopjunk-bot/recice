@@ -363,3 +363,66 @@ export function generateUnderpaidReportPDF(records: UnderpaidRecord[]) {
 
   doc.save("รายงานชำระไม่ครบ.pdf");
 }
+
+// ─── รายงานนักเรียนค้างชำระเต็มจำนวน ───
+type UnpaidRecord = {
+  student: {
+    studentCode: string;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    level: string;
+    room: string;
+  };
+  receiptType: string;
+  expectedAmount: number;
+};
+
+export function generateUnpaidReportPDF(records: UnpaidRecord[]) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  doc.addFileToVFS("THSarabunNew.ttf", THSarabunNew);
+  doc.addFont("THSarabunNew.ttf", "THSarabunNew", "normal");
+  doc.setFont("THSarabunNew");
+
+  // หัวรายงาน
+  doc.setFontSize(18);
+  doc.text("รายงานนักเรียนค้างชำระเต็มจำนวน", 105, 15, { align: "center" });
+  doc.setFontSize(12);
+  doc.text(`จำนวน ${records.length} คน`, 105, 22, { align: "center" });
+
+  const totalUnpaid = records.reduce((sum, r) => sum + r.expectedAmount, 0);
+
+  autoTable(doc, {
+    startY: 28,
+    head: [["ลำดับ", "เลขประจำตัว", "ชื่อ-สกุล", "ชั้น/ห้อง", "ประเภท", "ยอดค้างชำระ"]],
+    body: records.map((r, i) => [
+      i + 1,
+      r.student.studentCode,
+      `${r.student.prefix}${r.student.firstName} ${r.student.lastName}`,
+      `${r.student.level}/${r.student.room}`,
+      receiptTypeLabels[r.receiptType] || r.receiptType,
+      r.expectedAmount.toLocaleString(),
+    ]),
+    foot: [["", "", "", "", "รวมยอดค้างชำระ", totalUnpaid.toLocaleString()]],
+    styles: {
+      font: "THSarabunNew",
+      fontSize: 13,
+    },
+    headStyles: {
+      fillColor: [192, 57, 43],
+      fontSize: 13,
+    },
+    footStyles: {
+      fillColor: [245, 245, 245],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      fontSize: 14,
+    },
+    columnStyles: {
+      0: { halign: "center", cellWidth: 14 },
+      5: { halign: "right" },
+    },
+  });
+
+  doc.save("รายงานค้างชำระเต็มจำนวน.pdf");
+}
