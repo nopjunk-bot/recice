@@ -35,16 +35,25 @@ export async function GET() {
     ],
   });
 
-  const result = receipts.map((r) => {
-    const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
-    return {
-      id: r.id,
-      receiptNumber: r.receiptNumber,
-      receiptType: r.receiptType,
-      expectedAmount: config?.total ?? 0,
-      student: r.student,
-    };
-  });
+  // Dedupe: เก็บเฉพาะ 1 รายการต่อนักเรียน+ประเภท (กรณีมี Receipt ซ้ำใน DB)
+  const seen = new Set<string>();
+  const result = receipts
+    .filter((r) => {
+      const key = `${r.student.studentCode}|${r.receiptType}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((r) => {
+      const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
+      return {
+        id: r.id,
+        receiptNumber: r.receiptNumber,
+        receiptType: r.receiptType,
+        expectedAmount: config?.total ?? 0,
+        student: r.student,
+      };
+    });
 
   return NextResponse.json(result);
 }

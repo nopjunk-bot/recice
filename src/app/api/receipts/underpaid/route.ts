@@ -33,11 +33,16 @@ export async function GET() {
     ],
   });
 
-  // กรองเฉพาะที่ชำระน้อยกว่ายอดเต็ม
+  // กรองเฉพาะที่ชำระน้อยกว่ายอดเต็ม + dedupe ต่อนักเรียน+ประเภท
+  const seen = new Set<string>();
   const underpaid = receipts
     .filter((r) => {
       const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
-      return config && r.totalAmount < config.total;
+      if (!config || r.totalAmount >= config.total) return false;
+      const key = `${r.student.studentCode}|${r.receiptType}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     })
     .map((r) => {
       const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
