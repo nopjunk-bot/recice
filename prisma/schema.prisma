@@ -156,3 +156,20 @@ model DocumentRequest {
   @@index([createdAt])
   @@unique([studentId, receiptId])
 }
+
+model ReceiptCancelLog {
+  id              String      @id @default(cuid())
+  receiptNumber   String
+  studentCode     String
+  studentName     String
+  receiptType     ReceiptType
+  totalAmount     Float
+  reason          String
+  cancelledAt     DateTime    @default(now())
+  cancelledById   String
+  cancelledByName String
+
+  @@index([cancelledAt])
+  @@index([studentCode])
+  @@index([receiptNumber])
+}
