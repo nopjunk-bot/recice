@@ -341,17 +341,25 @@ export function generateUnderpaidReportPDF(records: UnderpaidRecord[]) {
     foot: [["", "", "", "", "", "", "รวมส่วนต่าง", totalDiff.toLocaleString()]],
     styles: {
       font: "THSarabunNew",
+      fontStyle: "normal",
       fontSize: 13,
     },
     headStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
       fillColor: [41, 128, 185],
       fontSize: 13,
     },
     footStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
       fillColor: [245, 245, 245],
       textColor: [0, 0, 0],
-      fontStyle: "bold",
       fontSize: 14,
+    },
+    bodyStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
     },
     columnStyles: {
       0: { halign: "center", cellWidth: 12 },
@@ -406,17 +414,25 @@ export function generateUnpaidReportPDF(records: UnpaidRecord[]) {
     foot: [["", "", "", "", "รวมยอดค้างชำระ", totalUnpaid.toLocaleString()]],
     styles: {
       font: "THSarabunNew",
+      fontStyle: "normal",
       fontSize: 13,
     },
     headStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
       fillColor: [192, 57, 43],
       fontSize: 13,
     },
     footStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
       fillColor: [245, 245, 245],
       textColor: [0, 0, 0],
-      fontStyle: "bold",
       fontSize: 14,
+    },
+    bodyStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
     },
     columnStyles: {
       0: { halign: "center", cellWidth: 14 },
