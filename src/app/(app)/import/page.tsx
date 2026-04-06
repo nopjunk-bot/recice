@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Trash2, Search, Download } from "lucide-react";
+import { Upload, Trash2, Search, Download, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 type Student = {
@@ -113,6 +113,61 @@ export default function ImportPage() {
     }
   }
 
+  // ─── เพิ่มนักเรียนรายบุคคล ───
+  const [manualForm, setManualForm] = useState({
+    studentCode: "",
+    prefix: "",
+    firstName: "",
+    lastName: "",
+    level: "",
+    room: "",
+    receiptType: "",
+  });
+  const [manualSaving, setManualSaving] = useState(false);
+
+  function updateManualForm(field: string, value: string) {
+    setManualForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleManualAdd() {
+    const { studentCode, prefix, firstName, lastName, level, room, receiptType: rt } = manualForm;
+    if (!studentCode || !prefix || !firstName || !lastName || !level || !room || !rt) {
+      toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+      return;
+    }
+
+    setManualSaving(true);
+    try {
+      const res = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualForm),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "ไม่สามารถเพิ่มข้อมูลได้");
+        return;
+      }
+
+      toast.success(`เพิ่มนักเรียน "${firstName} ${lastName}" สำเร็จ`);
+      setManualForm({
+        studentCode: "",
+        prefix: "",
+        firstName: "",
+        lastName: "",
+        level: "",
+        room: "",
+        receiptType: "",
+      });
+      loadStudents();
+    } catch {
+      toast.error("เกิดข้อผิดพลาด");
+    } finally {
+      setManualSaving(false);
+    }
+  }
+
   async function handleDelete(id: string, name: string) {
     if (!confirm(`ต้องการลบข้อมูล "${name}" หรือไม่?`)) return;
 
@@ -189,6 +244,116 @@ export default function ImportPage() {
               <Upload className="w-4 h-4 mr-2" />
               {uploading ? "กำลังนำเข้า..." : "นำเข้า"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Manual Entry Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
+            เพิ่มนักเรียนรายบุคคล
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            กรอกข้อมูลนักเรียนทีละคน สำหรับกรณีที่ไม่ได้นำเข้าจากไฟล์ Excel
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label>เลขประจำตัว <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="เช่น 12345"
+                value={manualForm.studentCode}
+                onChange={(e) => updateManualForm("studentCode", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>คำนำหน้า <span className="text-red-500">*</span></Label>
+              <Select
+                value={manualForm.prefix}
+                onValueChange={(v) => updateManualForm("prefix", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกคำนำหน้า" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="นาย">นาย</SelectItem>
+                  <SelectItem value="นาง">นาง</SelectItem>
+                  <SelectItem value="นางสาว">นางสาว</SelectItem>
+                  <SelectItem value="เด็กชาย">เด็กชาย</SelectItem>
+                  <SelectItem value="เด็กหญิง">เด็กหญิง</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>ชื่อ <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="ชื่อจริง"
+                value={manualForm.firstName}
+                onChange={(e) => updateManualForm("firstName", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>นามสกุล <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="นามสกุล"
+                value={manualForm.lastName}
+                onChange={(e) => updateManualForm("lastName", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>ชั้น <span className="text-red-500">*</span></Label>
+              <Select
+                value={manualForm.level}
+                onValueChange={(v) => updateManualForm("level", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกชั้น" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ม.1">ม.1</SelectItem>
+                  <SelectItem value="ม.4">ม.4</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>ห้อง <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="เช่น 1, 2, 3"
+                value={manualForm.room}
+                onChange={(e) => updateManualForm("room", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>ประเภทใบเสร็จ <span className="text-red-500">*</span></Label>
+              <Select
+                value={manualForm.receiptType}
+                onValueChange={(v) => updateManualForm("receiptType", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกประเภท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="M1">ม.1</SelectItem>
+                  <SelectItem value="M4_GENERAL">ม.4 ทั่วไป</SelectItem>
+                  <SelectItem value="M4_ENGLISH">ม.4 อังกฤษ</SelectItem>
+                  <SelectItem value="M4_CHINESE">ม.4 จีน</SelectItem>
+                  <SelectItem value="M4_JAPANESE">ม.4 ญี่ปุ่น</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={handleManualAdd}
+                disabled={manualSaving}
+                className="w-full"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                {manualSaving ? "กำลังบันทึก..." : "เพิ่มนักเรียน"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

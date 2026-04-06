@@ -109,6 +109,58 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result);
 }
 
+export async function POST(req: NextRequest) {
+  const user = await getSession();
+  if (!user || user.role === "WELFARE_STAFF") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const { studentCode, prefix, firstName, lastName, level, room, receiptType } = body;
+
+  // ตรวจสอบข้อมูลครบถ้วน
+  if (!studentCode || !prefix || !firstName || !lastName || !level || !room || !receiptType) {
+    return NextResponse.json(
+      { error: "กรุณากรอกข้อมูลให้ครบทุกช่อง" },
+      { status: 400 }
+    );
+  }
+
+  // ตรวจสอบประเภทใบเสร็จ
+  const validTypes = ["M1", "M4_GENERAL", "M4_ENGLISH", "M4_CHINESE", "M4_JAPANESE"];
+  if (!validTypes.includes(receiptType)) {
+    return NextResponse.json(
+      { error: "ประเภทใบเสร็จไม่ถูกต้อง" },
+      { status: 400 }
+    );
+  }
+
+  // ตรวจสอบเลขประจำตัวซ้ำ
+  const existing = await prisma.student.findUnique({
+    where: { studentCode: String(studentCode).trim() },
+  });
+  if (existing) {
+    return NextResponse.json(
+      { error: `เลขประจำตัว "${studentCode}" มีอยู่ในระบบแล้ว` },
+      { status: 409 }
+    );
+  }
+
+  const student = await prisma.student.create({
+    data: {
+      studentCode: String(studentCode).trim(),
+      prefix: String(prefix).trim(),
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      level: String(level).trim(),
+      room: String(room).trim(),
+      receiptType,
+    },
+  });
+
+  return NextResponse.json({ success: true, student }, { status: 201 });
+}
+
 export async function DELETE(req: NextRequest) {
   const user = await getSession();
   if (!user || user.role === "WELFARE_STAFF") {
