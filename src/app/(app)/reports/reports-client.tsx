@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateUnpaidReportPDF, generateUnderpaidReportPDF } from "@/lib/pdf-generator";
 
@@ -108,6 +108,23 @@ type UnderpaidItem = {
   student: StudentInfo;
 };
 
+type AdminConfirmedStudent = {
+  id: string;
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
+  receiptType: string;
+  receipts: {
+    id: string;
+    receiptNumber: string;
+    totalAmount: number;
+    unpaidConfirmedAt: string;
+  }[];
+};
+
 const receiptTypeLabels: Record<string, string> = {
   M1: "ม.1",
   M4_GENERAL: "ม.4 ทั่วไป",
@@ -142,6 +159,7 @@ export default function ReportsClient({
   // State สำหรับ tabs ค้างชำระ
   const [unpaid, setUnpaid] = useState<UnpaidItem[]>([]);
   const [underpaid, setUnderpaid] = useState<UnderpaidItem[]>([]);
+  const [adminConfirmed, setAdminConfirmed] = useState<AdminConfirmedStudent[]>([]);
 
   // State สำหรับ tab ยังไม่สแกน
   const [notScanned, setNotScanned] = useState<ReceivedStudent[]>([]);
@@ -167,6 +185,7 @@ export default function ReportsClient({
     else if (activeTab === "not-scanned") loadNotScanned();
     else if (activeTab === "unpaid") loadUnpaid();
     else if (activeTab === "underpaid") loadUnderpaid();
+    else if (activeTab === "admin-confirmed") loadAdminConfirmed();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadReceived(page: number, search?: string, level?: string) {
@@ -220,6 +239,12 @@ export default function ReportsClient({
     setLoaded((prev) => ({ ...prev, "underpaid": true }));
   }
 
+  async function loadAdminConfirmed() {
+    const res = await fetch("/api/receipts/admin-confirmed");
+    if (res.ok) setAdminConfirmed(await res.json());
+    setLoaded((prev) => ({ ...prev, "admin-confirmed": true }));
+  }
+
   // จัดกลุ่มนักเรียนตามระดับชั้น (ม.1, ม.4)
   function groupByGrade<T extends { student: StudentInfo }>(items: T[]): Record<string, T[]> {
     return items.reduce((acc, item) => {
@@ -267,6 +292,10 @@ export default function ReportsClient({
           <TabsTrigger value="underpaid" className="gap-2">
             <CircleDollarSign className="w-4 h-4" />
             ชำระไม่ครบ
+          </TabsTrigger>
+          <TabsTrigger value="admin-confirmed" className="gap-2">
+            <ShieldCheck className="w-4 h-4" />
+            ยืนยันค้างชำระ
           </TabsTrigger>
         </TabsList>
 
@@ -798,6 +827,115 @@ export default function ReportsClient({
                                   </TableCell>
                                 </TableRow>
                               ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: ยืนยันค้างชำระ (Admin confirmed) */}
+        <TabsContent value="admin-confirmed">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-lg">
+                    นักเรียนที่ Admin ยืนยันค้างชำระ ({adminConfirmed.length} คน)
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ยอดค้างชำระรวม: {adminConfirmed.reduce((s, r) => s + (r.receipts[0]?.totalAmount || 0), 0).toLocaleString()} บาท
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={adminConfirmed.length === 0}
+                  onClick={() => {
+                    window.open("/api/receipts/admin-confirmed/download", "_blank");
+                  }}
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  ดาวน์โหลด Excel
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {adminConfirmed.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  ไม่มีนักเรียนที่ Admin ยืนยันค้างชำระ
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(
+                    adminConfirmed.reduce((acc, s) => {
+                      const grade = getGradeLevel(s.level);
+                      if (!acc[grade]) acc[grade] = [];
+                      acc[grade].push(s);
+                      return acc;
+                    }, {} as Record<string, AdminConfirmedStudent[]>)
+                  )
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([grade, items]) => {
+                      const totalAmt = items.reduce((s, r) => s + (r.receipts[0]?.totalAmount || 0), 0);
+                      return (
+                        <div key={grade}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-bold text-lg text-purple-700">
+                              {grade} — {items.length} คน
+                            </h3>
+                            <Badge className="bg-purple-100 text-purple-700">
+                              {totalAmt.toLocaleString()} บาท
+                            </Badge>
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-12">#</TableHead>
+                                <TableHead>เลขประจำตัว</TableHead>
+                                <TableHead>ชื่อ-นามสกุล</TableHead>
+                                <TableHead>ชั้น/ห้อง</TableHead>
+                                <TableHead>ประเภท</TableHead>
+                                <TableHead className="text-right">จำนวนเงิน (บาท)</TableHead>
+                                <TableHead>วันที่ยืนยัน</TableHead>
+                                <TableHead>หมายเหตุ</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {items.map((s, i) => {
+                                const receipt = s.receipts[0];
+                                return (
+                                  <TableRow key={s.id}>
+                                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                                    <TableCell className="font-mono">{s.studentCode}</TableCell>
+                                    <TableCell>
+                                      {s.prefix}{s.firstName} {s.lastName}
+                                    </TableCell>
+                                    <TableCell>{s.level}/{s.room}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="secondary">
+                                        {receiptTypeLabels[s.receiptType] || s.receiptType}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium text-red-600">
+                                      {receipt?.totalAmount?.toLocaleString() || "-"}
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                      {receipt?.unpaidConfirmedAt
+                                        ? new Date(receipt.unpaidConfirmedAt).toLocaleDateString("th-TH", {
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })
+                                        : "-"}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">-</TableCell>
+                                  </TableRow>
+                                );
+                              })}
                             </TableBody>
                           </Table>
                         </div>

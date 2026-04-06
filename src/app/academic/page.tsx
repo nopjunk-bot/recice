@@ -37,6 +37,7 @@ import {
   Lock,
   ChevronLeft,
   ChevronRight,
+  FileDown,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
@@ -346,6 +347,19 @@ export default function AcademicPage() {
             <CardDescription>
               นักเรียนที่ได้รับการยืนยันแล้วว่ายังไม่ได้ชำระเงินค่าเทอม
             </CardDescription>
+
+            <div className="flex items-center justify-end mt-2">
+              <Button
+                variant="outline"
+                disabled={totalUnpaid === 0}
+                onClick={() => {
+                  window.open("/api/receipts/admin-confirmed/download", "_blank");
+                }}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                ดาวน์โหลด Excel
+              </Button>
+            </div>
 
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3 mt-3">
