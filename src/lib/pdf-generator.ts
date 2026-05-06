@@ -255,10 +255,7 @@ export function generateReceiptPDF(receipts: ReceiptData[], dateStr: string) {
       doc.addPage();
     }
 
-    // กำหนดวันที่ตามระดับชั้น: ม.1 = 4 เม.ย. 2569, ม.4 = 5 เม.ย. 2569
-    const type = receipts[i].student.receiptType;
-    const fixedDate = type === "M1" ? "2026-04-04" : "2026-04-05";
-    const dateText = formatThaiDate(fixedDate);
+    const dateText = formatThaiDate(dateStr);
 
     // Left copy (สำหรับเจ้าหน้าที่การเงิน)
     drawReceipt(doc, receipts[i], 0, dateText, "(สำหรับเจ้าหน้าที่การเงิน)");
