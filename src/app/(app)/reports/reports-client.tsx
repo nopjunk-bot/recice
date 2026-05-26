@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX, ShieldCheck, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { generateUnpaidReportPDF, generateUnderpaidReportPDF } from "@/lib/pdf-generator";
+import { generateUnpaidReportPDF, generateUnderpaidReportPDF, generateBillingNoticePDF } from "@/lib/pdf-generator";
 
 type NotReceivedItem = {
   id: string;
@@ -108,6 +108,21 @@ type UnderpaidItem = {
   student: StudentInfo;
 };
 
+type UnpaidSummaryStudent = {
+  studentId: string;
+  studentCode: string;
+  prefix: string;
+  firstName: string;
+  lastName: string;
+  level: string;
+  room: string;
+  receiptType: string;
+  paidCount: number;
+  unpaidCount: number;
+  outstandingItems: { name: string; amount: number }[];
+  outstandingAmount: number;
+};
+
 type AdminConfirmedStudent = {
   id: string;
   studentCode: string;
@@ -161,6 +176,16 @@ export default function ReportsClient({
   const [underpaid, setUnderpaid] = useState<UnderpaidItem[]>([]);
   const [adminConfirmed, setAdminConfirmed] = useState<AdminConfirmedStudent[]>([]);
 
+  // State สำหรับ tab สรุปค้างชำระค่าเทอม (ค่าใช้จ่ายสำคัญ 3 รายการ)
+  const [unpaidSummary, setUnpaidSummary] = useState<UnpaidSummaryStudent[]>([]);
+  const [unpaidSummarySearch, setUnpaidSummarySearch] = useState("");
+  const [unpaidSummaryLevel, setUnpaidSummaryLevel] = useState<"" | "M1" | "M4">("");
+  const [billingDueDate, setBillingDueDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10);
+  });
+
   // State สำหรับ tab ยังไม่สแกน
   const [notScanned, setNotScanned] = useState<ReceivedStudent[]>([]);
 
@@ -186,6 +211,7 @@ export default function ReportsClient({
     else if (activeTab === "unpaid") loadUnpaid();
     else if (activeTab === "underpaid") loadUnderpaid();
     else if (activeTab === "admin-confirmed") loadAdminConfirmed();
+    else if (activeTab === "unpaid-summary") loadUnpaidSummary();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadReceived(page: number, search?: string, level?: string) {
@@ -245,6 +271,37 @@ export default function ReportsClient({
     setLoaded((prev) => ({ ...prev, "admin-confirmed": true }));
   }
 
+  async function loadUnpaidSummary(levelOverride?: "" | "M1" | "M4") {
+    const lv = levelOverride ?? unpaidSummaryLevel;
+    const params = new URLSearchParams();
+    if (lv) params.set("level", lv);
+    const url = `/api/reports/unpaid-summary${params.toString() ? `?${params}` : ""}`;
+    const res = await fetch(url);
+    if (res.ok) setUnpaidSummary(await res.json());
+    setLoaded((prev) => ({ ...prev, "unpaid-summary": true }));
+  }
+
+  function buildBillingRecord(s: UnpaidSummaryStudent) {
+    const today = new Date().toISOString().slice(0, 10);
+    const noticeNumber = `BN-${today.replace(/-/g, "")}-${s.studentCode}`;
+    return {
+      student: {
+        studentCode: s.studentCode,
+        prefix: s.prefix,
+        firstName: s.firstName,
+        lastName: s.lastName,
+        level: s.level,
+        room: s.room,
+        receiptType: s.receiptType,
+      },
+      noticeNumber,
+      noticeDateStr: today,
+      dueDateStr: billingDueDate,
+      items: s.outstandingItems,
+      totalAmount: s.outstandingAmount,
+    };
+  }
+
   // จัดกลุ่มนักเรียนตามระดับชั้น (ม.1, ม.4)
   function groupByGrade<T extends { student: StudentInfo }>(items: T[]): Record<string, T[]> {
     return items.reduce((acc, item) => {
@@ -296,6 +353,10 @@ export default function ReportsClient({
           <TabsTrigger value="admin-confirmed" className="gap-2">
             <ShieldCheck className="w-4 h-4" />
             ยืนยันค้างชำระ
+          </TabsTrigger>
+          <TabsTrigger value="unpaid-summary" className="gap-2">
+            <FileText className="w-4 h-4" />
+            สรุปค้างชำระค่าเทอม
           </TabsTrigger>
         </TabsList>
 
@@ -1034,6 +1095,205 @@ export default function ReportsClient({
                     })}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: สรุปนักเรียนค้างชำระค่าเทอม (3 รายการสำคัญ + ออกใบแจ้งชำระเงิน) */}
+        <TabsContent value="unpaid-summary">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-lg">
+                    สรุปนักเรียนค้างชำระค่าเทอม ({(() => {
+                      const filtered = unpaidSummary.filter((s) => {
+                        if (!unpaidSummarySearch) return true;
+                        const q = unpaidSummarySearch.toLowerCase();
+                        return (
+                          s.studentCode.toLowerCase().includes(q) ||
+                          `${s.prefix}${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
+                        );
+                      });
+                      return filtered.length;
+                    })()} คน)
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    แสดงนักเรียนที่ยังมีใบเสร็จค้างชำระ พร้อม 3 รายการสำคัญที่ต้องชำระ:
+                    ค่าประกันอุบัติเหตุ 400฿ · ค่าระบบดูแลช่วยเหลือนักเรียน 150฿ · ค่าสมาคมผู้ปกครอง 200฿
+                    (รวม 750฿)
+                  </p>
+                </div>
+              </div>
+
+              {/* แถบตัวกรอง */}
+              <div className="flex flex-col lg:flex-row gap-3 mt-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="ค้นหาชื่อ หรือ เลขประจำตัว..."
+                    className="pl-9"
+                    value={unpaidSummarySearch}
+                    onChange={(e) => setUnpaidSummarySearch(e.target.value)}
+                  />
+                </div>
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-white"
+                  value={unpaidSummaryLevel}
+                  onChange={(e) => {
+                    const v = e.target.value as "" | "M1" | "M4";
+                    setUnpaidSummaryLevel(v);
+                    loadUnpaidSummary(v);
+                  }}
+                >
+                  <option value="">ทุกชั้น</option>
+                  <option value="M1">ม.1</option>
+                  <option value="M4">ม.4</option>
+                </select>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-muted-foreground whitespace-nowrap">
+                    กำหนดชำระภายใน:
+                  </label>
+                  <Input
+                    type="date"
+                    value={billingDueDate}
+                    onChange={(e) => setBillingDueDate(e.target.value)}
+                    className="w-[170px]"
+                  />
+                </div>
+                <Button
+                  variant="default"
+                  disabled={unpaidSummary.length === 0}
+                  onClick={() => {
+                    const filtered = unpaidSummary.filter((s) => {
+                      if (!unpaidSummarySearch) return true;
+                      const q = unpaidSummarySearch.toLowerCase();
+                      return (
+                        s.studentCode.toLowerCase().includes(q) ||
+                        `${s.prefix}${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
+                      );
+                    });
+                    if (filtered.length === 0) return;
+                    generateBillingNoticePDF(
+                      filtered.map(buildBillingRecord),
+                      "ใบแจ้งชำระเงิน-ทั้งหมด.pdf"
+                    );
+                  }}
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  ดาวน์โหลด PDF ทั้งหมด
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const filtered = unpaidSummary.filter((s) => {
+                  if (!unpaidSummarySearch) return true;
+                  const q = unpaidSummarySearch.toLowerCase();
+                  return (
+                    s.studentCode.toLowerCase().includes(q) ||
+                    `${s.prefix}${s.firstName} ${s.lastName}`.toLowerCase().includes(q)
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-center py-8 text-muted-foreground">
+                      {unpaidSummary.length === 0
+                        ? "ไม่มีนักเรียนที่ค้างชำระ"
+                        : "ไม่พบนักเรียนตามคำค้นหา"}
+                    </p>
+                  );
+                }
+
+                // จัดกลุ่มตามชั้น
+                const grouped = filtered.reduce((acc, s) => {
+                  const grade = getGradeLevel(s.level);
+                  if (!acc[grade]) acc[grade] = [];
+                  acc[grade].push(s);
+                  return acc;
+                }, {} as Record<string, UnpaidSummaryStudent[]>);
+
+                return (
+                  <div className="space-y-6">
+                    {Object.entries(grouped)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([grade, list]) => {
+                        const totalAmt = list.reduce((s, r) => s + r.outstandingAmount, 0);
+                        return (
+                          <div key={grade}>
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="font-bold text-lg text-blue-700">
+                                {grade} — {list.length} คน
+                              </h3>
+                              <Badge className="bg-blue-100 text-blue-700">
+                                ยอดค้างรวม {totalAmt.toLocaleString()} บาท
+                              </Badge>
+                            </div>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-12">#</TableHead>
+                                  <TableHead>เลขประจำตัว</TableHead>
+                                  <TableHead>ชื่อ-นามสกุล</TableHead>
+                                  <TableHead>ชั้น/ห้อง</TableHead>
+                                  <TableHead>ประเภท</TableHead>
+                                  <TableHead className="text-center">ชำระแล้ว</TableHead>
+                                  <TableHead className="text-center">ค้างชำระ</TableHead>
+                                  <TableHead className="text-right">ยอดค้าง (บาท)</TableHead>
+                                  <TableHead className="text-center">ใบแจ้งชำระ</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {list.map((s, i) => (
+                                  <TableRow key={s.studentId}>
+                                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                                    <TableCell className="font-mono">{s.studentCode}</TableCell>
+                                    <TableCell>
+                                      {s.prefix}{s.firstName} {s.lastName}
+                                    </TableCell>
+                                    <TableCell>{s.level}/{s.room}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="secondary">
+                                        {receiptTypeLabels[s.receiptType] || s.receiptType}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Badge className="bg-green-100 text-green-700">
+                                        {s.paidCount} ครั้ง
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Badge variant="destructive">{s.unpaidCount} ใบ</Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium text-red-600">
+                                      {s.outstandingAmount.toLocaleString()}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          generateBillingNoticePDF(
+                                            [buildBillingRecord(s)],
+                                            `ใบแจ้งชำระ-${s.studentCode}.pdf`
+                                          );
+                                        }}
+                                      >
+                                        <FileDown className="w-3.5 h-3.5 mr-1" />
+                                        ออก PDF
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>

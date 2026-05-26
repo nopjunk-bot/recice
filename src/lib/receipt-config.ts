@@ -20,7 +20,7 @@ export const receiptConfigs: Record<
     title: "ใบเสร็จรับเงินชั่วคราว (ม.1)",
     items: [
       { name: "ค่าบำรุงการศึกษา ภาคเรียนที่ 1/2569", amount: 2500 },
-      { name: "ค่าระบบสารสนเทศ", amount: 150 },
+      { name: "ค่าระบบดูแลช่วยเหลือนักเรียน (Student Care)", amount: 150 },
       { name: "ค่าประกันอุบัติเหตุ", amount: 400 },
       { name: "ค่าสมาคมผู้ปกครองและครู", amount: 200 },
       { name: "ค่ากระเป๋าเป้", amount: 280 },
@@ -33,7 +33,7 @@ export const receiptConfigs: Record<
     title: "ใบเสร็จรับเงินชั่วคราว (ม.4) ทั่วไป",
     items: [
       { name: "ค่าบำรุงการศึกษา ภาคเรียนที่ 1/2569", amount: 2500 },
-      { name: "ค่าระบบสารสนเทศ", amount: 150 },
+      { name: "ค่าระบบดูแลช่วยเหลือนักเรียน (Student Care)", amount: 150 },
       { name: "ค่าประกันอุบัติเหตุ", amount: 400 },
       { name: "ค่าสมาคมผู้ปกครองและครู", amount: 200 },
       { name: "ค่าชุดพละ", amount: 460 },
@@ -45,7 +45,7 @@ export const receiptConfigs: Record<
     title: "ใบเสร็จรับเงินชั่วคราว (ม.4) อังกฤษ",
     items: [
       { name: "ค่าบำรุงการศึกษา ภาคเรียนที่ 1/2569", amount: 3000 },
-      { name: "ค่าระบบสารสนเทศ", amount: 150 },
+      { name: "ค่าระบบดูแลช่วยเหลือนักเรียน (Student Care)", amount: 150 },
       { name: "ค่าประกันอุบัติเหตุ", amount: 400 },
       { name: "ค่าสมาคมผู้ปกครองและครู", amount: 200 },
       { name: "ค่าชุดพละ", amount: 460 },
@@ -57,7 +57,7 @@ export const receiptConfigs: Record<
     title: "ใบเสร็จรับเงินชั่วคราว (ม.4) จีน",
     items: [
       { name: "ค่าบำรุงการศึกษา ภาคเรียนที่ 1/2569", amount: 3000 },
-      { name: "ค่าระบบสารสนเทศ", amount: 150 },
+      { name: "ค่าระบบดูแลช่วยเหลือนักเรียน (Student Care)", amount: 150 },
       { name: "ค่าประกันอุบัติเหตุ", amount: 400 },
       { name: "ค่าสมาคมผู้ปกครองและครู", amount: 200 },
       { name: "ค่าชุดพละ", amount: 460 },
@@ -69,7 +69,7 @@ export const receiptConfigs: Record<
     title: "ใบเสร็จรับเงินชั่วคราว (ม.4) ญี่ปุ่น",
     items: [
       { name: "ค่าบำรุงการศึกษา ภาคเรียนที่ 1/2569", amount: 3000 },
-      { name: "ค่าระบบสารสนเทศ", amount: 150 },
+      { name: "ค่าระบบดูแลช่วยเหลือนักเรียน (Student Care)", amount: 150 },
       { name: "ค่าประกันอุบัติเหตุ", amount: 400 },
       { name: "ค่าสมาคมผู้ปกครองและครู", amount: 200 },
       { name: "ค่าชุดพละ", amount: 460 },

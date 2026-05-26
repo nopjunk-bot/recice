@@ -439,3 +439,177 @@ export function generateUnpaidReportPDF(records: UnpaidRecord[]) {
 
   doc.save("รายงานค้างชำระเต็มจำนวน.pdf");
 }
+
+// ─── ใบแจ้งชำระเงิน (Payment Notice) ───
+type BillingNoticeRecord = {
+  student: {
+    studentCode: string;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    level: string;
+    room: string;
+    receiptType: string;
+  };
+  noticeNumber: string;
+  noticeDateStr: string;
+  dueDateStr: string;
+  items: { name: string; amount: number }[];
+  totalAmount: number;
+};
+
+function drawBillingNotice(doc: jsPDF, record: BillingNoticeRecord) {
+  const pageW = 210;
+  const cx = pageW / 2;
+  const marginX = 20;
+  const fullName = `${record.student.prefix}${record.student.firstName} ${record.student.lastName}`;
+  const classText = `${record.student.level}/${record.student.room}`;
+
+  doc.setFont("THSarabunNew", "normal");
+  doc.setTextColor(0, 0, 0);
+
+  // ── โลโก้ซ้าย-ขวา ──
+  const logoSize = 22;
+  doc.addImage(logo1Base64, "PNG", marginX, 12, logoSize, logoSize);
+  doc.addImage(logo2Base64, "PNG", pageW - marginX - logoSize, 12, logoSize, logoSize);
+
+  // ── ชื่อโรงเรียน + ที่อยู่ ──
+  doc.setFontSize(22);
+  doc.text("โรงเรียนระยองวิทยาคม", cx, 22, { align: "center" });
+  doc.setFontSize(14);
+  doc.text(
+    "498 ตำบลเนินพระ  อำเภอเมืองระยอง  จังหวัดระยอง",
+    cx,
+    30,
+    { align: "center" }
+  );
+
+  // ── หัวเอกสาร ──
+  doc.setFontSize(20);
+  doc.text("ใบแจ้งชำระเงิน  (Payment Notice)", cx, 48, { align: "center" });
+
+  // เส้นใต้หัวเอกสาร
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.4);
+  doc.line(marginX, 51, pageW - marginX, 51);
+
+  // ── เลขที่ + วันที่ ──
+  doc.setFontSize(14);
+  doc.text(`เลขที่  ${record.noticeNumber}`, marginX, 60);
+  doc.text(formatThaiDate(record.noticeDateStr), pageW - marginX, 60, {
+    align: "right",
+  });
+
+  // ── เรียน ──
+  doc.setFontSize(15);
+  doc.text(`เรียน  ผู้ปกครองของ ${fullName}  ระดับชั้น ${classText}`, marginX, 72);
+
+  // ── เนื้อหา (สุภาพ) ──
+  let y = 84;
+  doc.setFontSize(15);
+  const indent = "        ";
+  const bodyLines = [
+    `${indent}ตามที่ทางโรงเรียนได้ออกใบเสร็จรับเงินค่าบำรุงการศึกษา ค่ากิจกรรมพัฒนาผู้เรียน และค่าใช้จ่ายอื่น ๆ`,
+    `ของนักเรียน ${fullName}  ระดับชั้น ${classText}  ไปก่อนหน้านี้แล้วนั้น`,
+    `${indent}บัดนี้ทางโรงเรียนได้ตรวจสอบรายการชำระเงินแล้ว พบว่ายังคงมีค่าใช้จ่ายในส่วนที่จำเป็นต้องชำระ`,
+    `เพื่อให้การดำเนินงานของทางโรงเรียนเป็นไปด้วยความเรียบร้อย  โดยมีรายการดังต่อไปนี้`,
+  ];
+  for (const line of bodyLines) {
+    doc.text(line, marginX, y);
+    y += 7;
+  }
+
+  // ── ตาราง 3 รายการ ──
+  y += 2;
+  autoTable(doc, {
+    startY: y,
+    head: [["ที่", "รายการ", "จำนวนเงิน (บาท)"]],
+    body: record.items.map((it, idx) => [
+      String(idx + 1),
+      it.name,
+      it.amount.toLocaleString(),
+    ]),
+    foot: [["", "รวมทั้งสิ้น", record.totalAmount.toLocaleString()]],
+    styles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
+      fontSize: 14,
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
+      fillColor: [192, 57, 43],
+      textColor: [255, 255, 255],
+      fontSize: 14,
+      halign: "center",
+    },
+    footStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
+      fillColor: [245, 245, 245],
+      textColor: [0, 0, 0],
+      fontSize: 15,
+    },
+    bodyStyles: {
+      font: "THSarabunNew",
+      fontStyle: "normal",
+    },
+    columnStyles: {
+      0: { halign: "center", cellWidth: 15 },
+      1: { halign: "left" },
+      2: { halign: "right", cellWidth: 45 },
+    },
+    margin: { left: marginX, right: marginX },
+  });
+
+  // ── ตัวอักษรกำกับยอด ──
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  doc.setFontSize(14);
+  const bahtText = THBText(record.totalAmount);
+  doc.text(`(ตัวอักษร: ${bahtText})`, marginX, y);
+
+  // ── ข้อความปิดท้าย ──
+  y += 12;
+  doc.setFontSize(15);
+  const closingLines = [
+    `${indent}จึงเรียนมาเพื่อโปรดทราบ  และขอความอนุเคราะห์ผู้ปกครองดำเนินการชำระเงินตามรายการข้างต้น`,
+    `ภายใน${formatThaiDate(record.dueDateStr)}  หากชำระเงินเรียบร้อยแล้ว กรุณานำหลักฐานการชำระเงิน`,
+    `มายื่นที่ฝ่ายการเงินของทางโรงเรียนเพื่อออกใบเสร็จรับเงินต่อไป`,
+    `${indent}ทางโรงเรียนขอขอบพระคุณท่านผู้ปกครองที่ให้ความร่วมมือมา ณ โอกาสนี้`,
+  ];
+  for (const line of closingLines) {
+    doc.text(line, marginX, y);
+    y += 7;
+  }
+
+  // ── ลายเซ็น (ขวาล่าง) ──
+  y += 18;
+  const sigX = pageW - marginX - 45;
+  doc.setFontSize(14);
+  doc.text("ขอแสดงความนับถือ", sigX, y, { align: "center" });
+  y += 18;
+  doc.text("ลงชื่อ ..........................................", sigX, y, { align: "center" });
+  y += 7;
+  doc.text("( ............................................ )", sigX, y, { align: "center" });
+  y += 7;
+  doc.text("เจ้าหน้าที่ฝ่ายการเงิน", sigX, y, { align: "center" });
+}
+
+export function generateBillingNoticePDF(
+  records: BillingNoticeRecord[],
+  filename?: string
+) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  doc.addFileToVFS("THSarabunNew.ttf", THSarabunNew);
+  doc.addFont("THSarabunNew.ttf", "THSarabunNew", "normal");
+  doc.setFont("THSarabunNew");
+
+  for (let i = 0; i < records.length; i++) {
+    if (i > 0) doc.addPage();
+    drawBillingNotice(doc, records[i]);
+  }
+
+  doc.save(filename ?? "ใบแจ้งชำระเงิน.pdf");
+}
