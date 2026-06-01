@@ -120,6 +120,8 @@ type UnpaidSummaryStudent = {
   paidCount: number;
   unpaidCount: number;
   paidAmount: number;
+  expectedAmount: number;
+  actualOutstanding: number;
   outstandingItems: { name: string; amount: number }[];
   outstandingAmount: number;
 };
@@ -291,6 +293,17 @@ export default function ReportsClient({
   function buildBillingRecord(s: UnpaidSummaryStudent) {
     const today = new Date().toISOString().slice(0, 10);
     const noticeNumber = `BN-${today.replace(/-/g, "")}-${s.studentCode}`;
+
+    // ตัด items ตามลำดับให้ผลรวมเท่ากับ outstandingAmount (ถ้าค้างน้อยกว่า 750)
+    let remaining = s.outstandingAmount;
+    const items: { name: string; amount: number }[] = [];
+    for (const it of s.outstandingItems) {
+      if (remaining <= 0) break;
+      const amt = Math.min(it.amount, remaining);
+      items.push({ name: it.name, amount: amt });
+      remaining -= amt;
+    }
+
     return {
       student: {
         studentCode: s.studentCode,
@@ -304,7 +317,7 @@ export default function ReportsClient({
       noticeNumber,
       noticeDateStr: today,
       dueDateStr: billingDueDate,
-      items: s.outstandingItems,
+      items,
       totalAmount: s.outstandingAmount,
     };
   }
@@ -1126,9 +1139,10 @@ export default function ReportsClient({
                     })()} คน)
                   </CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
-                    แสดงนักเรียนที่ยังมีใบเสร็จค้างชำระ พร้อม 3 รายการสำคัญที่ต้องชำระ:
-                    ค่าประกันอุบัติเหตุ 400฿ · ค่าระบบดูแลช่วยเหลือนักเรียน 150฿ · ค่าสมาคมผู้ปกครอง 200฿
-                    (รวม 750฿)
+                    แสดงนักเรียนที่จ่ายยังไม่ครบยอดเต็ม (รวมทุกใบเสร็จที่ออกให้)
+                    ใบแจ้งชำระจะระบุ 3 รายการสำคัญ:
+                    ค่าประกันอุบัติเหตุ 400฿ · Student Care 150฿ · สมาคมผู้ปกครอง 200฿
+                    โดยจำกัดไม่ให้เกินยอดค้างจริง
                   </p>
                 </div>
                 <Button
@@ -1236,7 +1250,7 @@ export default function ReportsClient({
                     {Object.entries(grouped)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([grade, list]) => {
-                        const totalAmt = list.reduce((s, r) => s + r.outstandingAmount, 0);
+                        const totalAmt = list.reduce((s, r) => s + r.actualOutstanding, 0);
                         return (
                           <div key={grade}>
                             <div className="flex items-center justify-between mb-2">
@@ -1244,7 +1258,7 @@ export default function ReportsClient({
                                 {grade} — {list.length} คน
                               </h3>
                               <Badge className="bg-blue-100 text-blue-700">
-                                ยอดค้างรวม {totalAmt.toLocaleString()} บาท
+                                ยอดค้างจริงรวม {totalAmt.toLocaleString()} บาท
                               </Badge>
                             </div>
                             <Table>
@@ -1257,8 +1271,9 @@ export default function ReportsClient({
                                   <TableHead>ประเภท</TableHead>
                                   <TableHead className="text-center">ชำระแล้ว</TableHead>
                                   <TableHead className="text-right">ยอดชำระแล้ว (บาท)</TableHead>
-                                  <TableHead className="text-center">ค้างชำระ</TableHead>
-                                  <TableHead className="text-right">ยอดค้าง (บาท)</TableHead>
+                                  <TableHead className="text-right">ยอดเต็ม (บาท)</TableHead>
+                                  <TableHead className="text-right">ค้างจริง (บาท)</TableHead>
+                                  <TableHead className="text-right">ยอดในใบแจ้ง (บาท)</TableHead>
                                   <TableHead className="text-center">ใบแจ้งชำระ</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -1284,10 +1299,13 @@ export default function ReportsClient({
                                     <TableCell className="text-right font-medium text-green-700">
                                       {s.paidAmount > 0 ? s.paidAmount.toLocaleString() : "-"}
                                     </TableCell>
-                                    <TableCell className="text-center">
-                                      <Badge variant="destructive">{s.unpaidCount} ใบ</Badge>
+                                    <TableCell className="text-right text-muted-foreground">
+                                      {s.expectedAmount.toLocaleString()}
                                     </TableCell>
-                                    <TableCell className="text-right font-medium text-red-600">
+                                    <TableCell className="text-right font-bold text-red-600">
+                                      {s.actualOutstanding.toLocaleString()}
+                                    </TableCell>
+                                    <TableCell className="text-right text-orange-600">
                                       {s.outstandingAmount.toLocaleString()}
                                     </TableCell>
                                     <TableCell className="text-center">
