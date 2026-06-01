@@ -43,3 +43,7 @@ next-env.d.ts
 /src/generated/prisma
 
 .vercel
+cookies.txt
+*.xlsx
+*.pdf
+*.png

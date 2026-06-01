@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Users,
   ArrowLeftRight,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import type ExcelJS from "exceljs";
@@ -196,6 +197,175 @@ export default function StudentMatchingPage() {
       )
     : [];
 
+  async function handleDownloadTemplate() {
+    try {
+      const ExcelJSModule = await import("exceljs");
+      const wb = new ExcelJSModule.default.Workbook();
+
+      const sampleData: Record<string, { room: string; students: { code: string; nid: string; prefix: string; firstName: string; lastName: string }[] }[]> = {
+        "1": [
+          {
+            room: "1",
+            students: [
+              { code: "10001", nid: "1234567890123", prefix: "เด็กชาย", firstName: "สมชาย", lastName: "ใจดี" },
+              { code: "10002", nid: "1234567890124", prefix: "เด็กหญิง", firstName: "สมหญิง", lastName: "รักเรียน" },
+            ],
+          },
+          {
+            room: "2",
+            students: [
+              { code: "10003", nid: "1234567890125", prefix: "เด็กชาย", firstName: "ธนพล", lastName: "มั่นคง" },
+            ],
+          },
+        ],
+        "2": [
+          {
+            room: "1",
+            students: [
+              { code: "20001", nid: "1234567890126", prefix: "เด็กชาย", firstName: "วีรชัย", lastName: "พิทักษ์" },
+            ],
+          },
+        ],
+        "3": [
+          {
+            room: "1",
+            students: [
+              { code: "30001", nid: "1234567890127", prefix: "เด็กหญิง", firstName: "พิมพ์ใจ", lastName: "งามเลิศ" },
+            ],
+          },
+        ],
+        "4": [
+          {
+            room: "1",
+            students: [
+              { code: "40001", nid: "1234567890128", prefix: "นาย", firstName: "อนุชา", lastName: "ชาญฉลาด" },
+            ],
+          },
+        ],
+        "5": [
+          {
+            room: "1",
+            students: [
+              { code: "50001", nid: "1234567890129", prefix: "นางสาว", firstName: "ปรีดา", lastName: "สุขใจ" },
+            ],
+          },
+        ],
+        "6": [
+          {
+            room: "1",
+            students: [
+              { code: "60001", nid: "1234567890130", prefix: "นาย", firstName: "ภาคิน", lastName: "เจริญรุ่ง" },
+            ],
+          },
+        ],
+      };
+
+      for (const level of ["1", "2", "3", "4", "5", "6"]) {
+        const ws = wb.addWorksheet(`ม.${level}`);
+        ws.columns = [
+          { width: 8 },
+          { width: 15 },
+          { width: 18 },
+          { width: 35 },
+          { width: 20 },
+          { width: 20 },
+        ];
+
+        const headerRow = ws.addRow([
+          "เลขที่",
+          "รหัสประจำตัว",
+          "เลขบัตรประชาชน",
+          "คำนำหน้า",
+          "ชื่อ",
+          "นามสกุล",
+        ]);
+        headerRow.font = { bold: true };
+        headerRow.alignment = { horizontal: "center", vertical: "middle" };
+        headerRow.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE5E7EB" },
+          };
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+
+        const rooms = sampleData[level] || [];
+        for (const r of rooms) {
+          // Room header row (col 4 must contain "มัธยมศึกษาปีที่ X/Y")
+          const roomHeader = ws.addRow([
+            "",
+            "",
+            "",
+            `รายชื่อนักเรียนชั้นมัธยมศึกษาปีที่ ${level}/${r.room}`,
+            "",
+            "",
+          ]);
+          roomHeader.font = { bold: true };
+          ws.mergeCells(`A${roomHeader.number}:F${roomHeader.number}`);
+          const mergedCell = ws.getCell(`D${roomHeader.number}`);
+          mergedCell.alignment = { horizontal: "center" };
+          mergedCell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFEF3C7" },
+          };
+
+          // Data rows
+          r.students.forEach((s, idx) => {
+            const dataRow = ws.addRow([
+              idx + 1,
+              s.code,
+              s.nid,
+              s.prefix,
+              s.firstName,
+              s.lastName,
+            ]);
+            dataRow.getCell(1).alignment = { horizontal: "center" };
+            dataRow.getCell(2).numFmt = "@";
+            dataRow.getCell(3).numFmt = "@";
+          });
+        }
+
+        // Add instruction sheet content via top note (only on ม.1)
+        if (level === "1") {
+          ws.insertRow(1, [
+            "หมายเหตุ: แต่ละ Sheet คือชั้น (ม.1 - ม.6) | ใส่หัวห้องในรูปแบบ \"รายชื่อนักเรียนชั้นมัธยมศึกษาปีที่ X/Y\" ที่คอลัมน์ D ก่อนแถวข้อมูล",
+          ]);
+          ws.mergeCells("A1:F1");
+          const note = ws.getCell("A1");
+          note.font = { italic: true, color: { argb: "FF92400E" } };
+          note.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFFFBEB" },
+          };
+          note.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+          ws.getRow(1).height = 30;
+        }
+      }
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Template-รายชื่อนักเรียน.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("ดาวน์โหลด Template สำเร็จ");
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการสร้าง Template");
+    }
+  }
+
   async function handleExport() {
     if (!report) return;
 
@@ -303,16 +473,28 @@ export default function StudentMatchingPage() {
       {/* Upload Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Upload className="w-5 h-5" />
-            อัปโหลดไฟล์รายชื่อจากวิชาการ
-          </CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              อัปโหลดไฟล์รายชื่อจากวิชาการ
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadTemplate}
+              className="gap-2"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              ดาวน์โหลด Template
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">
             เลือกไฟล์ Excel (.xlsx) ที่ได้รับจากงานวิชาการ
             ระบบจะจับคู่ชื่อ-นามสกุลของนักเรียนในฐานข้อมูลกับไฟล์ที่อัปโหลด
             เพื่อเปรียบเทียบข้อมูลชั้น/ห้องเรียน
+            หากยังไม่มีไฟล์ สามารถดาวน์โหลด Template เพื่อกรอกข้อมูลตามรูปแบบที่ระบบรองรับได้
           </p>
           <div className="flex items-center gap-4">
             <Input
