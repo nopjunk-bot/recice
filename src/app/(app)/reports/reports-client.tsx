@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX, ShieldCheck, FileText } from "lucide-react";
+import { AlertTriangle, Package, BarChart3, Shirt, CheckCircle, Search, ChevronLeft, ChevronRight, FileDown, Banknote, CircleDollarSign, UserX, ShieldCheck, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateUnpaidReportPDF, generateUnderpaidReportPDF, generateBillingNoticePDF } from "@/lib/pdf-generator";
 
@@ -180,6 +180,7 @@ export default function ReportsClient({
   const [unpaidSummary, setUnpaidSummary] = useState<UnpaidSummaryStudent[]>([]);
   const [unpaidSummarySearch, setUnpaidSummarySearch] = useState("");
   const [unpaidSummaryLevel, setUnpaidSummaryLevel] = useState<"" | "M1" | "M4">("");
+  const [unpaidSummaryLoading, setUnpaidSummaryLoading] = useState(false);
   const [billingDueDate, setBillingDueDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 14);
@@ -276,9 +277,14 @@ export default function ReportsClient({
     const params = new URLSearchParams();
     if (lv) params.set("level", lv);
     const url = `/api/reports/unpaid-summary${params.toString() ? `?${params}` : ""}`;
-    const res = await fetch(url);
-    if (res.ok) setUnpaidSummary(await res.json());
-    setLoaded((prev) => ({ ...prev, "unpaid-summary": true }));
+    setUnpaidSummaryLoading(true);
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) setUnpaidSummary(await res.json());
+      setLoaded((prev) => ({ ...prev, "unpaid-summary": true }));
+    } finally {
+      setUnpaidSummaryLoading(false);
+    }
   }
 
   function buildBillingRecord(s: UnpaidSummaryStudent) {
@@ -1124,6 +1130,16 @@ export default function ReportsClient({
                     (รวม 750฿)
                   </p>
                 </div>
+                <Button
+                  variant="outline"
+                  onClick={() => loadUnpaidSummary()}
+                  disabled={unpaidSummaryLoading}
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 mr-2 ${unpaidSummaryLoading ? "animate-spin" : ""}`}
+                  />
+                  {unpaidSummaryLoading ? "กำลังโหลด..." : "รีเฟรชข้อมูล"}
+                </Button>
               </div>
 
               {/* แถบตัวกรอง */}
