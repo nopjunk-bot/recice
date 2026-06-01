@@ -32,6 +32,7 @@ import {
   Users,
   ArrowLeftRight,
   FileSpreadsheet,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import type ExcelJS from "exceljs";
@@ -95,6 +96,8 @@ export default function StudentMatchingPage() {
   const [uploading, setUploading] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [activeTab, setActiveTab] = useState("summary");
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
 
   // Filters for matched tab
   const [search, setSearch] = useState("");
@@ -139,6 +142,7 @@ export default function StudentMatchingPage() {
       }
 
       setReport(data);
+      setApplied(false);
       setActiveTab("summary");
       toast.success(
         `จับคู่สำเร็จ ${data.summary.matched} คน จากทั้งหมด ${data.summary.totalExcelStudents} คน`
@@ -366,6 +370,51 @@ export default function StudentMatchingPage() {
     }
   }
 
+  async function handleApply() {
+    if (!report) return;
+    const changedStudents = report.matchedStudents.filter(
+      (m) => m.roomChanged || m.levelChanged
+    );
+    if (changedStudents.length === 0) {
+      toast.info("ไม่มีนักเรียนที่ต้องอัปเดตห้อง/ชั้น");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `คุณต้องการอัปเดตชั้น/ห้องของนักเรียน ${changedStudents.length} คน ตามผลจับคู่จากไฟล์วิชาการใช่หรือไม่?\n\nการดำเนินการนี้จะเขียนทับข้อมูลเดิมในระบบ และไม่สามารถย้อนกลับได้`
+    );
+    if (!confirmed) return;
+
+    setApplying(true);
+    try {
+      const updates = changedStudents.map((m) => ({
+        id: m.dbId,
+        level: m.excelLevel,
+        room: m.excelRoom,
+      }));
+
+      const res = await fetch("/api/student-matching/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "เกิดข้อผิดพลาดในการบันทึก");
+        return;
+      }
+
+      setApplied(true);
+      toast.success(`อัปเดตชั้น/ห้องของนักเรียน ${data.updated} คนสำเร็จ`);
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+    } finally {
+      setApplying(false);
+    }
+  }
+
   async function handleExport() {
     if (!report) return;
 
@@ -513,7 +562,23 @@ export default function StudentMatchingPage() {
       {/* Report Section */}
       {report && (
         <>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              onClick={handleApply}
+              disabled={
+                applying ||
+                applied ||
+                report.summary.roomDifferences + report.summary.levelDifferences === 0
+              }
+              className="gap-2"
+            >
+              <Save className="w-4 h-4" />
+              {applied
+                ? "บันทึกแล้ว"
+                : applying
+                ? "กำลังบันทึก..."
+                : `บันทึกผลจับคู่ลงระบบ (${report.summary.roomDifferences + report.summary.levelDifferences} คน)`}
+            </Button>
             <Button variant="outline" onClick={handleExport} className="gap-2">
               <Download className="w-4 h-4" />
               ดาวน์โหลดรายงาน Excel
