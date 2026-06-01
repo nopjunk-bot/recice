@@ -35,7 +35,10 @@ export async function GET(req: NextRequest) {
 
   const students = await prisma.student.findMany({
     where: {
+      // ต้องมีใบเสร็จที่ออกผ่านหน้า "พิมพ์ใบเสร็จรับเงินชั่วคราว" (/receipts → /api/receipts/generate)
       receipts: { some: {} },
+      // ตัดนักเรียนที่ "รับสินค้าแล้ว" ออก เพราะถือว่าชำระครบแล้ว (ตามที่ฝ่ายการเงินกำหนด)
+      distributions: { none: { received: true } },
       ...receiptTypeFilter,
     },
     select: {
