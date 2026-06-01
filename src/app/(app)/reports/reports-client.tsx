@@ -119,6 +119,7 @@ type UnpaidSummaryStudent = {
   receiptType: string;
   paidCount: number;
   unpaidCount: number;
+  paidAmount: number;
   outstandingItems: { name: string; amount: number }[];
   outstandingAmount: number;
 };
@@ -1255,6 +1256,7 @@ export default function ReportsClient({
                                   <TableHead>ชั้น/ห้อง</TableHead>
                                   <TableHead>ประเภท</TableHead>
                                   <TableHead className="text-center">ชำระแล้ว</TableHead>
+                                  <TableHead className="text-right">ยอดชำระแล้ว (บาท)</TableHead>
                                   <TableHead className="text-center">ค้างชำระ</TableHead>
                                   <TableHead className="text-right">ยอดค้าง (บาท)</TableHead>
                                   <TableHead className="text-center">ใบแจ้งชำระ</TableHead>
@@ -1278,6 +1280,9 @@ export default function ReportsClient({
                                       <Badge className="bg-green-100 text-green-700">
                                         {s.paidCount} ครั้ง
                                       </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium text-green-700">
+                                      {s.paidAmount > 0 ? s.paidAmount.toLocaleString() : "-"}
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Badge variant="destructive">{s.unpaidCount} ใบ</Badge>

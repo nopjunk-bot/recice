@@ -70,6 +70,9 @@ export async function GET(req: NextRequest) {
       const unique = [...dedup.values()];
       const paidCount = unique.filter((r) => r.paidAt !== null).length;
       const unpaidCount = unique.filter((r) => r.paidAt === null).length;
+      const paidAmount = unique
+        .filter((r) => r.paidAt !== null)
+        .reduce((sum, r) => sum + r.totalAmount, 0);
 
       return {
         studentId: s.id,
@@ -82,6 +85,7 @@ export async function GET(req: NextRequest) {
         receiptType: s.receiptType,
         paidCount,
         unpaidCount,
+        paidAmount,
         outstandingItems: OUTSTANDING_ITEMS,
         outstandingAmount: OUTSTANDING_AMOUNT,
       };
