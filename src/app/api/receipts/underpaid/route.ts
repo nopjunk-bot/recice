@@ -9,12 +9,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // ดึงเฉพาะใบเสร็จที่ "ชำระแล้ว" (paidAt != null) เพื่อหลีกเลี่ยงการนับซ้ำกับรายงานค้างชำระเต็มจำนวน
   const receipts = await prisma.receipt.findMany({
+    where: { paidAt: { not: null } },
     select: {
       id: true,
       receiptNumber: true,
       receiptType: true,
       totalAmount: true,
+      paidAt: true,
       student: {
         select: {
           studentCode: true,
@@ -30,30 +33,56 @@ export async function GET() {
       { student: { level: "asc" } },
       { student: { room: "asc" } },
       { student: { studentCode: "asc" } },
+      { paidAt: "asc" },
     ],
   });
 
-  // กรองเฉพาะที่ชำระน้อยกว่ายอดเต็ม + dedupe ต่อนักเรียน+ประเภท
-  const seen = new Set<string>();
-  const underpaid = receipts
-    .filter((r) => {
-      const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
-      if (!config || r.totalAmount >= config.total) return false;
-      const key = `${r.student.studentCode}|${r.receiptType}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((r) => {
-      const config = receiptConfigs[r.receiptType as ReceiptTypeKey];
-      return {
-        id: r.id,
+  // รวมยอดใบเสร็จทุกใบของนักเรียนคนเดียวกัน + ประเภทเดียวกัน
+  type Group = {
+    receiptId: string;
+    receiptNumber: string;
+    receiptType: string;
+    paidAmount: number;
+    receiptCount: number;
+    student: typeof receipts[number]["student"];
+  };
+  const groups = new Map<string, Group>();
+
+  for (const r of receipts) {
+    const key = `${r.student.studentCode}|${r.receiptType}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.paidAmount += r.totalAmount;
+      existing.receiptCount += 1;
+    } else {
+      groups.set(key, {
+        receiptId: r.id,
         receiptNumber: r.receiptNumber,
         receiptType: r.receiptType,
         paidAmount: r.totalAmount,
-        expectedAmount: config.total,
-        difference: config.total - r.totalAmount,
+        receiptCount: 1,
         student: r.student,
+      });
+    }
+  }
+
+  // กรองเฉพาะที่ยอดรวมยังน้อยกว่ายอดเต็ม
+  const underpaid = Array.from(groups.values())
+    .filter((g) => {
+      const config = receiptConfigs[g.receiptType as ReceiptTypeKey];
+      return config && g.paidAmount < config.total;
+    })
+    .map((g) => {
+      const config = receiptConfigs[g.receiptType as ReceiptTypeKey];
+      return {
+        id: g.receiptId,
+        receiptNumber: g.receiptNumber,
+        receiptType: g.receiptType,
+        paidAmount: g.paidAmount,
+        expectedAmount: config.total,
+        difference: config.total - g.paidAmount,
+        receiptCount: g.receiptCount,
+        student: g.student,
       };
     });
 
